@@ -1,5 +1,7 @@
 # vLLM Dashboard
 
+![vLLM Dashboard](public/screenshot.png)
+
 Real-time token usage and metrics dashboard for vLLM inference servers.
 
 ## Features
