@@ -302,10 +302,10 @@ const psu = computed(() => {
     dcPowerW: 555,
     gpuPowerW: 445,
     cpuPowerW: 52,
-    platformPowerW: 58,
+    platformPowerW: 88,
     efficiencyPct: 92.5,
-    loadPercent: 37.5,
-    headroomW: 1000
+    loadPercent: 39.5,
+    headroomW: 970
   }
 })
 
