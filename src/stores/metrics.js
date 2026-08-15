@@ -119,11 +119,12 @@ export const useMetricsStore = defineStore('metrics', () => {
   // Backend type detection: 'vllm' | 'llamacpp'
   const backendType = ref('vllm')
 
-  // ── llama.cpp slot-based generation tracking ──────────────────────────────
+  // ── llama.cpp slot-based tracking ────────────────────────────────────────
   // llamacpp:tokens_predicted_total is broken in MTP mode (stays 0).
-  // We poll /slots and accumulate n_decoded deltas per slot ourselves.
-  const llamaCppPrevSlots    = ref({})   // slot_id → last known n_decoded
-  const llamaCppSlotGenTotal = ref(0)    // our monotonically-increasing gen counter
+  // We poll /slots and accumulate n_decoded and n_prompt_tokens_processed deltas ourselves.
+  const llamaCppPrevSlots       = ref({})   // slot_id → last known n_decoded
+  const llamaCppPrevPromptSlots = ref({})   // slot_id → last known n_prompt_tokens_processed
+  const llamaCppSlotGenTotal    = ref(0)    // our monotonically-increasing gen counter
 
   // Decayed/smooth peak GPU cache usage for animated display
   const gpuCacheUsagePeak = ref(0)
@@ -340,10 +341,10 @@ export const useMetricsStore = defineStore('metrics', () => {
       // llama.cpp uses "llamacpp:" prefix; vLLM uses "vllm:" prefix
       const isLlamaCpp = 'llamacpp:prompt_tokens_total' in m
 
-      // ── For llama.cpp: fetch /slots and compute cumulative gen tokens ──────
+      // ── For llama.cpp: fetch /slots and compute cumulative gen tokens & live prefill ──
       // llamacpp:tokens_predicted_total never increments in MTP mode.
-      // Instead, each active slot exposes next_token[0].n_decoded — we track
-      // deltas across polls to build our own monotonically-increasing counter.
+      // Instead, each active slot exposes next_token[0].n_decoded and n_prompt_tokens_processed.
+      let liveSlotPrefillSpeed = 0
       if (isLlamaCpp) {
         try {
           const slotsRes = await fetch(buildUrl('/slots'), { signal: AbortSignal.timeout(3000) })
@@ -351,17 +352,26 @@ export const useMetricsStore = defineStore('metrics', () => {
             const slots = await slotsRes.json()
             for (const slot of slots) {
               const slotId = slot.id
-              const cur = slot.next_token?.[0]?.n_decoded || 0
-              const prv = llamaCppPrevSlots.value[slotId] || 0
+              const curGen = slot.next_token?.[0]?.n_decoded || 0
+              const prvGen = llamaCppPrevSlots.value[slotId] || 0
 
-              if (cur > prv) {
+              if (curGen > prvGen) {
                 // Generation ongoing — add the new tokens since last poll
-                llamaCppSlotGenTotal.value += cur - prv
-              } else if (cur > 0 && cur < prv) {
-                // Slot reset AND a new request already has cur tokens
-                llamaCppSlotGenTotal.value += cur
+                llamaCppSlotGenTotal.value += curGen - prvGen
+              } else if (curGen > 0 && curGen < prvGen) {
+                // Slot reset AND a new request already has curGen tokens
+                llamaCppSlotGenTotal.value += curGen
               }
-              llamaCppPrevSlots.value[slotId] = cur
+              llamaCppPrevSlots.value[slotId] = curGen
+
+              // Live prefill throughput tracking from n_prompt_tokens_processed
+              const curPrompt = slot.n_prompt_tokens_processed || 0
+              const prvPrompt = llamaCppPrevPromptSlots.value[slotId] || 0
+              if (curPrompt > prvPrompt && dt && dt > 0) {
+                const promptDelta = curPrompt - prvPrompt
+                liveSlotPrefillSpeed = Math.max(liveSlotPrefillSpeed, promptDelta / dt)
+              }
+              llamaCppPrevPromptSlots.value[slotId] = curPrompt
             }
           }
         } catch { /* non-fatal */ }
@@ -370,7 +380,7 @@ export const useMetricsStore = defineStore('metrics', () => {
       const newRaw = {
         promptTokens:
           m['vllm:prompt_tokens_total'] ||
-          m['llamacpp:prompt_tokens_total'] || 0,
+          ((m['llamacpp:prompt_tokens_total'] || 0) + (m['llamacpp:prompt_tokens_cached_total'] || 0)) || 0,
 
         // llamacpp:tokens_predicted_total is 0 in MTP mode; use our slot-tracked counter
         genTokens:
@@ -378,19 +388,22 @@ export const useMetricsStore = defineStore('metrics', () => {
           (isLlamaCpp ? llamaCppSlotGenTotal.value : 0) ||
           m['llamacpp:tokens_predicted_total'] || 0,
 
-        // llama.cpp does not expose prefix-cache hit counters in /metrics
+        // llama.cpp exposes prefix-cache reused prompt tokens in llamacpp:prompt_tokens_cached_total
         cachedTokens:
           m['vllm:prompt_tokens_cached'] ||
           m['vllm:prefix_cache_hits_total'] ||
-          m['vllm:prefix_cache_hits'] || 0,
+          m['vllm:prefix_cache_hits'] ||
+          m['llamacpp:prompt_tokens_cached_total'] || 0,
 
         cacheHits:
           m['vllm:prefix_cache_hits_total'] ||
-          m['vllm:prefix_cache_hits'] || 0,
+          m['vllm:prefix_cache_hits'] ||
+          m['llamacpp:prompt_tokens_cached_total'] || 0,
 
         cacheQueries:
           m['vllm:prefix_cache_queries_total'] ||
-          m['vllm:prefix_cache_queries'] || 0,
+          m['vllm:prefix_cache_queries'] ||
+          ((m['llamacpp:prompt_tokens_total'] || 0) + (m['llamacpp:prompt_tokens_cached_total'] || 0)) || 0,
 
         gpuCacheUsage:
           m['vllm:gpu_cache_usage_perc::gpu'] ??
@@ -474,7 +487,13 @@ export const useMetricsStore = defineStore('metrics', () => {
       }
 
       // Calculate rates
-      if (delta.promptTokens > 0) {
+      if (liveSlotPrefillSpeed > 0) {
+        lastPrefillSpeed.value = Math.round(liveSlotPrefillSpeed)
+        if (liveSlotPrefillSpeed > peakPrefillSpeed.value) {
+          peakPrefillSpeed.value = Math.round(liveSlotPrefillSpeed)
+        }
+        rates.value.promptTokens = liveSlotPrefillSpeed
+      } else if (delta.promptTokens > 0) {
         let speed = 0
         const deltaPromptSec = Math.max(0, (newRaw.promptSeconds || 0) - (prev.value.promptSeconds || 0))
         if (deltaPromptSec > 0) {
