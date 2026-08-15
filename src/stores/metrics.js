@@ -88,8 +88,13 @@ export const useMetricsStore = defineStore('metrics', () => {
   // Server state
   const serverStatus = ref('offline')   // 'offline' | 'loading' | 'ready'
   const modelName    = ref('')
+  const modelContextLen = ref(null)     // e.g. 240000
+  const modelHasVision  = ref(false)    // true if vision capability detected
   const lastUpdated  = ref(null)
   const fetchError   = ref(null)
+
+  // Host system hardware telemetry (GPU, CPU, RAM)
+  const systemMetrics = ref(null)
 
   // Current raw counters (from last /metrics scrape)
   const raw = ref({
@@ -108,6 +113,15 @@ export const useMetricsStore = defineStore('metrics', () => {
 
   // Whether MTP/speculative decoding is active
   const isMtpEnabled = ref(false)
+
+  // Backend type detection: 'vllm' | 'llamacpp'
+  const backendType = ref('vllm')
+
+  // ── llama.cpp slot-based generation tracking ──────────────────────────────
+  // llamacpp:tokens_predicted_total is broken in MTP mode (stays 0).
+  // We poll /slots and accumulate n_decoded deltas per slot ourselves.
+  const llamaCppPrevSlots    = ref({})   // slot_id → last known n_decoded
+  const llamaCppSlotGenTotal = ref(0)    // our monotonically-increasing gen counter
 
   // Decayed/smooth peak GPU cache usage for animated display
   const gpuCacheUsagePeak = ref(0)
@@ -258,10 +272,34 @@ export const useMetricsStore = defineStore('metrics', () => {
       const res = await fetch(buildUrl('/v1/models'), { signal: AbortSignal.timeout(4000) })
       if (!res.ok) { serverStatus.value = 'loading'; return false }
       const data = await res.json()
-      const models = data?.data || []
+      const models = data?.data || data?.models || []
       if (models.length > 0) {
         serverStatus.value = 'ready'
-        modelName.value = models[0].id
+        const m = models[0]
+        modelName.value = m.id || m.name || ''
+
+        // Context size: vLLM provides max_model_len; llama.cpp provides meta.n_ctx or details
+        const ctx = m.max_model_len || m.meta?.n_ctx || m.max_context_length || null
+        modelContextLen.value = ctx ? Number(ctx) : null
+
+        // Vision capability detection
+        const idStr = (m.id || m.name || '').toLowerCase()
+        const rootStr = (m.root || '').toLowerCase()
+        const caps = Array.isArray(m.capabilities) ? m.capabilities.map(c => String(c).toLowerCase()) : []
+        const hasVision =
+          caps.includes('vision') ||
+          caps.includes('image_input') ||
+          idStr.includes('-vl') ||
+          idStr.includes('_vl') ||
+          idStr.includes('vision') ||
+          idStr.includes('llava') ||
+          idStr.includes('pixtral') ||
+          idStr.includes('minicpm-v') ||
+          idStr.includes('internvl') ||
+          rootStr.includes('vision') ||
+          rootStr.includes('vl')
+        modelHasVision.value = hasVision
+
         return true
       }
       serverStatus.value = 'loading'
@@ -269,7 +307,21 @@ export const useMetricsStore = defineStore('metrics', () => {
     } catch {
       serverStatus.value = 'offline'
       modelName.value = ''
+      modelContextLen.value = null
+      modelHasVision.value = false
       return false
+    }
+  }
+
+  async function fetchSystemMetrics() {
+    try {
+      const res = await fetch('/api/system-info', { signal: AbortSignal.timeout(3000) })
+      if (res.ok) {
+        const data = await res.json()
+        systemMetrics.value = data
+      }
+    } catch {
+      // Non-fatal if system metrics endpoint is not reachable
     }
   }
 
@@ -282,28 +334,102 @@ export const useMetricsStore = defineStore('metrics', () => {
       const now = Date.now()
       const dt = prev.value.ts ? (now - prev.value.ts) / 1000 : null
 
-      const newRaw = {
-        promptTokens:    m['vllm:prompt_tokens_total'] || 0,
-        genTokens:       m['vllm:generation_tokens_total'] || 0,
-        cachedTokens:    m['vllm:prompt_tokens_cached'] || m['vllm:prefix_cache_hits_total'] || m['vllm:prefix_cache_hits'] || 0,
-        cacheHits:       m['vllm:prefix_cache_hits_total'] || m['vllm:prefix_cache_hits'] || 0,
-        cacheQueries:    m['vllm:prefix_cache_queries_total'] || m['vllm:prefix_cache_queries'] || 0,
-        gpuCacheUsage:   // V1 engine uses pool_name label; fall back to bare metric name for V0, then vllm:kv_cache_usage_perc
-                         m['vllm:gpu_cache_usage_perc::gpu'] ??
-                         m['vllm:gpu_cache_usage_perc'] ??
-                         m['vllm:kv_cache_usage_perc'] ??
-                         m['vllm:gpu_cache_usage_factor'] ?? 0,
-        cpuCacheUsage:   m['vllm:gpu_cache_usage_perc::cpu'] ??
-                         m['vllm:cpu_cache_usage_perc'] ?? 0,
-        specAccepted:    m['vllm:spec_decode_num_accepted_tokens_total'] || m['vllm:spec_decode_num_accepted_tokens'] || 0,
-        specDraft:       m['vllm:spec_decode_num_draft_tokens_total'] || m['vllm:spec_decode_num_draft_tokens'] || 0,
-        specDrafts:      m['vllm:spec_decode_num_drafts_total'] || m['vllm:spec_decode_num_drafts'] || 0,
-        requestsRunning: m['vllm:num_requests_running'] || 0,
-        requestsWaiting: m['vllm:num_requests_waiting'] || 0,
-        requestsSuccess: m['vllm:request_success_total'] || 0,
+      // ── Detect backend (vLLM vs llama.cpp) ─────────────────────────────────
+      // llama.cpp uses "llamacpp:" prefix; vLLM uses "vllm:" prefix
+      const isLlamaCpp = 'llamacpp:prompt_tokens_total' in m
+
+      // ── For llama.cpp: fetch /slots and compute cumulative gen tokens ──────
+      // llamacpp:tokens_predicted_total never increments in MTP mode.
+      // Instead, each active slot exposes next_token[0].n_decoded — we track
+      // deltas across polls to build our own monotonically-increasing counter.
+      if (isLlamaCpp) {
+        try {
+          const slotsRes = await fetch(buildUrl('/slots'), { signal: AbortSignal.timeout(3000) })
+          if (slotsRes.ok) {
+            const slots = await slotsRes.json()
+            for (const slot of slots) {
+              const slotId = slot.id
+              const cur = slot.next_token?.[0]?.n_decoded || 0
+              const prv = llamaCppPrevSlots.value[slotId] || 0
+
+              if (cur > prv) {
+                // Generation ongoing — add the new tokens since last poll
+                llamaCppSlotGenTotal.value += cur - prv
+              } else if (cur > 0 && cur < prv) {
+                // Slot reset AND a new request already has cur tokens
+                llamaCppSlotGenTotal.value += cur
+              }
+              llamaCppPrevSlots.value[slotId] = cur
+            }
+          }
+        } catch { /* non-fatal */ }
       }
 
-      isMtpEnabled.value = ('vllm:spec_decode_num_draft_tokens_total' in m) || ('vllm:spec_decode_num_draft_tokens' in m)
+      const newRaw = {
+        promptTokens:
+          m['vllm:prompt_tokens_total'] ||
+          m['llamacpp:prompt_tokens_total'] || 0,
+
+        // llamacpp:tokens_predicted_total is 0 in MTP mode; use our slot-tracked counter
+        genTokens:
+          m['vllm:generation_tokens_total'] ||
+          (isLlamaCpp ? llamaCppSlotGenTotal.value : 0) ||
+          m['llamacpp:tokens_predicted_total'] || 0,
+
+        // llama.cpp does not expose prefix-cache hit counters in /metrics
+        cachedTokens:
+          m['vllm:prompt_tokens_cached'] ||
+          m['vllm:prefix_cache_hits_total'] ||
+          m['vllm:prefix_cache_hits'] || 0,
+
+        cacheHits:
+          m['vllm:prefix_cache_hits_total'] ||
+          m['vllm:prefix_cache_hits'] || 0,
+
+        cacheQueries:
+          m['vllm:prefix_cache_queries_total'] ||
+          m['vllm:prefix_cache_queries'] || 0,
+
+        gpuCacheUsage:
+          m['vllm:gpu_cache_usage_perc::gpu'] ??
+          m['vllm:gpu_cache_usage_perc'] ??
+          m['vllm:kv_cache_usage_perc'] ??
+          m['vllm:gpu_cache_usage_factor'] ?? 0,
+
+        cpuCacheUsage:
+          m['vllm:gpu_cache_usage_perc::cpu'] ??
+          m['vllm:cpu_cache_usage_perc'] ?? 0,
+
+        specAccepted:
+          m['vllm:spec_decode_num_accepted_tokens_total'] ||
+          m['vllm:spec_decode_num_accepted_tokens'] || 0,
+
+        specDraft:
+          m['vllm:spec_decode_num_draft_tokens_total'] ||
+          m['vllm:spec_decode_num_draft_tokens'] || 0,
+
+        specDrafts:
+          m['vllm:spec_decode_num_drafts_total'] ||
+          m['vllm:spec_decode_num_drafts'] || 0,
+
+        requestsRunning:
+          m['vllm:num_requests_running'] ||
+          m['llamacpp:requests_processing'] || 0,
+
+        requestsWaiting:
+          m['vllm:num_requests_waiting'] ||
+          m['llamacpp:requests_deferred'] || 0,
+
+        requestsSuccess:
+          m['vllm:request_success_total'] ||
+          m['llamacpp:n_decode_total'] || 0,
+      }
+
+      backendType.value = isLlamaCpp ? 'llamacpp' : 'vllm'
+      isMtpEnabled.value = !isLlamaCpp && (
+        ('vllm:spec_decode_num_draft_tokens_total' in m) ||
+        ('vllm:spec_decode_num_draft_tokens' in m)
+      )
 
       // Compute delta (only positive — counters should only go up)
       const delta = {
@@ -337,7 +463,7 @@ export const useMetricsStore = defineStore('metrics', () => {
         accumulateLifetime(delta)
       }
 
-      // Calculate rates
+      // Calculate rates (delta-based for both backends)
       if (dt && dt > 0) {
         rates.value = {
           promptTokens: delta.promptTokens / dt,
@@ -381,6 +507,7 @@ export const useMetricsStore = defineStore('metrics', () => {
   async function poll() {
     await fetchModels()
     if (serverStatus.value !== 'offline') await fetchMetrics()
+    await fetchSystemMetrics()
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────────
@@ -492,15 +619,16 @@ export const useMetricsStore = defineStore('metrics', () => {
     // Settings
     serverUrl, pollIntervalMs,
     // State
-    serverStatus, modelName, lastUpdated, fetchError,
-    raw, rates, isMtpEnabled,
+    serverStatus, modelName, modelContextLen, modelHasVision, lastUpdated, fetchError,
+    systemMetrics,
+    raw, rates, isMtpEnabled, backendType,
     cacheHitRate, lifetimeCacheHitRate,
     mtpAcceptanceRate, lifetimeMtpAcceptanceRate,
     engineStatus,
     history, timeSeries, lifetime,
     gpuCacheUsagePeak,
     // Actions
-    poll, clearHistory, clearLifetime, updateSettings,
+    poll, fetchSystemMetrics, clearHistory, clearLifetime, updateSettings,
     exportData, importData,
   }
 })

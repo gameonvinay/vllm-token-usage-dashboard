@@ -67,7 +67,7 @@ const dimensions = [
   { key: 'byYear',    label: 'Year',    dimKey: 'byYear'    },
   { key: 'byMonth',   label: 'Month',   dimKey: 'byMonth'   },
   { key: 'byWeek',    label: 'Week',    dimKey: 'byWeek'    },
-  { key: 'byWeekday', label: 'Weekday', dimKey: 'byWeekday' },
+  { key: 'byWeekday', label: 'Day',     dimKey: 'byWeekday' },
   { key: 'byHour',    label: 'Hour',    dimKey: 'byHour'    },
 ]
 
@@ -134,16 +134,56 @@ function bucketValue(bucket) {
   return bucket[activeMetricDef.value.field] || 0
 }
 
+function getCurrentWeekDays() {
+  const now = new Date()
+  const day = now.getDay()
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1)
+  const monday = new Date(now)
+  monday.setDate(diff)
+  monday.setHours(0, 0, 0, 0)
+  
+  const days = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    days.push(d)
+  }
+  return days
+}
+
+function getDayValue(dateObj, rawHourData) {
+  const y = dateObj.getFullYear()
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0')
+  const d = String(dateObj.getDate()).padStart(2, '0')
+  const prefix = `${y}-${m}-${d} `
+  
+  const total = { promptTokens: 0, genTokens: 0, cachedTokens: 0, requests: 0, cacheHits: 0, cacheQueries: 0, specAccepted: 0, specDraft: 0 }
+  for (const [key, bucket] of Object.entries(rawHourData)) {
+    if (key.startsWith(prefix)) {
+      for (const k of Object.keys(total)) {
+        total[k] += bucket[k] || 0
+      }
+    }
+  }
+  return total
+}
+
 // ─── Build chart data ─────────────────────────────────────────────────────────
 const chartData = computed(() => {
   const dim = activeDim.value
   const raw = store.timeSeries[dim] || {}
 
   if (dim === 'byWeekday') {
-    return Array.from({ length: 7 }, (_, i) => ({
-      label: WEEKDAY_LABELS[i],
-      value: bucketValue(raw[String(i)]),
-    }))
+    const currentWeekDays = getCurrentWeekDays()
+    const rawHours = store.timeSeries.byHour || {}
+    return currentWeekDays.map(dateObj => {
+      const dayBucket = getDayValue(dateObj, rawHours)
+      const label = `${dateObj.getDate()} ${MONTH_NAMES[dateObj.getMonth()]} ${WEEKDAY_LABELS[dateObj.getDay()]}`
+      return {
+        label,
+        value: bucketValue(dayBucket),
+      }
+    })
   }
 
   if (dim === 'byHour') {
@@ -216,7 +256,7 @@ const summaryStats = computed(() => {
 const chartWidth = computed(() => {
   const len = chartData.value.length
   if (activeDim.value === 'byHour')    return Math.max(600, 24 * 30)
-  if (activeDim.value === 'byWeekday') return Math.max(500, 7 * 65)
+  if (activeDim.value === 'byWeekday') return Math.max(500, 7 * 90)
   if (activeDim.value === 'byMonth')   return Math.max(500, len * 100)
   if (activeDim.value === 'byWeek')    return Math.max(500, len * 165)
   return 500
