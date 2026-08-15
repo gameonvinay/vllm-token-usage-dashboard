@@ -166,7 +166,7 @@ export function getSystemMetrics() {
   }
 
   // 4. Total System Power & PSU (Cooler Master V Platinum 1600W V2 ATX 3.1)
-  const platformBaseW = 88 // Motherboard, X670/X870 chipsets, RAM, Kraken Elite AIO pump, CM ARGB, Fans, NVMe SSDs (+30W calibration)
+  const platformBaseW = 88 // Base platform: AIO (Kraken Elite) + RAM (DDR5) + HDD/NVMe + Case Fans + Chipset
   const totalDcW = (gpu.powerDrawW || 0) + (cpu.powerW || 0) + platformBaseW
   // Cooler Master V Platinum 1600W V2 operates at ~92.5% efficiency curve around 500-800W load
   const efficiency = 0.925

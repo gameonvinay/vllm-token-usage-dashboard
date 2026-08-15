@@ -230,7 +230,7 @@
             <span class="spec-val text-amber">{{ psu.cpuPowerW }} W</span>
           </div>
           <div class="spec-cell">
-            <span class="spec-label">Platform (AIO/RAM)</span>
+            <span class="spec-label">AIO / RAM / HDD / Fans</span>
             <span class="spec-val text-cyan">{{ psu.platformPowerW }} W</span>
           </div>
           <div class="spec-cell">
