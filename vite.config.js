@@ -49,6 +49,9 @@ export default defineConfig({
     },
   },
   server: {
+    watch: {
+      ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**'],
+    },
     proxy: {
       // Proxies /api/* (except /api/system-info which is handled by middleware above) → LLM server
       '/api': {
