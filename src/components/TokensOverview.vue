@@ -5,6 +5,7 @@
       :lifetime="store.lifetime.promptTokens"
       :sessionValue="store.raw.promptTokens"
       :rate="store.rates.promptTokens"
+      :subRate="store.lastPrefillSpeed"
       :sparkData="store.history.promptTokensRate"
       color="#7c6ff7"
       glow="rgba(124,111,247,0.15)"

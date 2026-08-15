@@ -20,7 +20,10 @@
 
     <div class="stat-footer">
       <div class="stat-rate" :class="rateClass">
-        <span v-if="rate !== null && rate > 0">{{ rateStr }}</span>
+        <span v-if="rate !== null && rate > 0.5">{{ rateStr }}</span>
+        <span v-else-if="subRate !== null && subRate > 0" class="sub-rate-text" :title="`Last speed: ${subRate.toLocaleString()} tok/s`">
+          {{ subLabel }}: {{ fmtSpeed(subRate) }}
+        </span>
         <span v-else style="color: var(--color-text-subtle)">0 /s</span>
       </div>
       <SparklineChart
@@ -43,6 +46,8 @@ const props = defineProps({
   lifetime:     { type: Number,   default: 0 },     // persistent across restarts
   sessionValue: { type: Number,   default: null },  // current vLLM session counter
   rate:         { type: Number,   default: null },
+  subRate:      { type: Number,   default: null },  // fallback / last active speed
+  subLabel:     { type: String,   default: 'Last' },
   sparkData:    { type: Array,    default: null },
   color:        { type: String,   default: '#7c6ff7' },
   glow:         { type: String,   default: 'rgba(124,111,247,0.2)' },
@@ -64,17 +69,23 @@ function fmtNum(n) {
   return n.toFixed(0)
 }
 
+function fmtSpeed(s) {
+  if (!s || s <= 0) return '0 /s'
+  if (s >= 1000) return `${(s / 1000).toFixed(1)}K /s`
+  return `${s.toFixed(0)} /s`
+}
+
 const displayLifetime = computed(() => fmtNum(props.lifetime || 0))
 const displaySession  = computed(() => fmtNum(props.sessionValue || 0))
 
 const rateStr = computed(() => {
   const r = props.rate
-  if (r === null || r <= 0) return null
+  if (r === null || r <= 0.5) return null
   if (r >= 1000) return `+${(r / 1000).toFixed(1)}K /s`
   return `+${r.toFixed(1)} /s`
 })
 
-const rateClass = computed(() => (props.rate !== null && props.rate > 0) ? 'positive' : '')
+const rateClass = computed(() => (props.rate !== null && props.rate > 0.5) ? 'positive' : '')
 </script>
 
 <style scoped>
@@ -113,5 +124,13 @@ const rateClass = computed(() => (props.rate !== null && props.rate > 0) ? 'posi
   font-family: var(--font-mono, monospace);
   color: var(--color-text-muted, #7d8590);
   font-weight: 500;
+}
+
+.sub-rate-text {
+  font-size: 0.75rem;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-text-muted);
+  font-weight: 500;
+  opacity: 0.85;
 }
 </style>

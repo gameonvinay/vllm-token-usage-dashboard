@@ -110,6 +110,8 @@ export const useMetricsStore = defineStore('metrics', () => {
 
   // Per-second rates
   const rates = ref({ promptTokens: 0, genTokens: 0, cachedTokens: 0 })
+  const lastPrefillSpeed = ref(0)       // Most recent prompt processing throughput (tok/s)
+  const peakPrefillSpeed = ref(0)       // Session peak prompt processing throughput (tok/s)
 
   // Whether MTP/speculative decoding is active
   const isMtpEnabled = ref(false)
@@ -402,15 +404,18 @@ export const useMetricsStore = defineStore('metrics', () => {
 
         specAccepted:
           m['vllm:spec_decode_num_accepted_tokens_total'] ||
-          m['vllm:spec_decode_num_accepted_tokens'] || 0,
+          m['vllm:spec_decode_num_accepted_tokens'] ||
+          m['llamacpp:spec_decode_num_accepted_tokens_total'] || 0,
 
         specDraft:
           m['vllm:spec_decode_num_draft_tokens_total'] ||
-          m['vllm:spec_decode_num_draft_tokens'] || 0,
+          m['vllm:spec_decode_num_draft_tokens'] ||
+          m['llamacpp:spec_decode_num_draft_tokens_total'] || 0,
 
         specDrafts:
           m['vllm:spec_decode_num_drafts_total'] ||
-          m['vllm:spec_decode_num_drafts'] || 0,
+          m['vllm:spec_decode_num_drafts'] ||
+          m['llamacpp:spec_decode_num_drafts_total'] || 0,
 
         requestsRunning:
           m['vllm:num_requests_running'] ||
@@ -423,12 +428,17 @@ export const useMetricsStore = defineStore('metrics', () => {
         requestsSuccess:
           m['vllm:request_success_total'] ||
           m['llamacpp:n_decode_total'] || 0,
+
+        promptSeconds:
+          m['llamacpp:prompt_seconds_total'] || 0,
       }
 
       backendType.value = isLlamaCpp ? 'llamacpp' : 'vllm'
-      isMtpEnabled.value = !isLlamaCpp && (
+      isMtpEnabled.value = (
         ('vllm:spec_decode_num_draft_tokens_total' in m) ||
-        ('vllm:spec_decode_num_draft_tokens' in m)
+        ('vllm:spec_decode_num_draft_tokens' in m) ||
+        ('llamacpp:spec_decode_num_draft_tokens_total' in m) ||
+        Boolean(newRaw.specDraft > 0)
       )
 
       // Compute delta (only positive — counters should only go up)
@@ -463,13 +473,37 @@ export const useMetricsStore = defineStore('metrics', () => {
         accumulateLifetime(delta)
       }
 
-      // Calculate rates (delta-based for both backends)
-      if (dt && dt > 0) {
-        rates.value = {
-          promptTokens: delta.promptTokens / dt,
-          genTokens:    delta.genTokens    / dt,
-          cachedTokens: delta.cachedTokens / dt,
+      // Calculate rates
+      if (delta.promptTokens > 0) {
+        let speed = 0
+        const deltaPromptSec = Math.max(0, (newRaw.promptSeconds || 0) - (prev.value.promptSeconds || 0))
+        if (deltaPromptSec > 0) {
+          speed = delta.promptTokens / deltaPromptSec
+        } else if (dt && dt > 0) {
+          speed = delta.promptTokens / dt
         }
+        if (speed > 0) {
+          lastPrefillSpeed.value = Math.round(speed)
+          if (speed > peakPrefillSpeed.value) {
+            peakPrefillSpeed.value = Math.round(speed)
+          }
+          rates.value.promptTokens = speed
+        }
+      } else {
+        // Smooth decay so prefill burst doesn't vanish instantly across single-second polls
+        rates.value.promptTokens = Math.max(0, rates.value.promptTokens * 0.65)
+      }
+
+      if (delta.genTokens > 0 && dt && dt > 0) {
+        rates.value.genTokens = delta.genTokens / dt
+      } else {
+        rates.value.genTokens = Math.max(0, rates.value.genTokens * 0.65)
+      }
+
+      if (delta.cachedTokens > 0 && dt && dt > 0) {
+        rates.value.cachedTokens = delta.cachedTokens / dt
+      } else {
+        rates.value.cachedTokens = 0
       }
 
       prev.value = { ...newRaw, ts: now }
@@ -621,7 +655,7 @@ export const useMetricsStore = defineStore('metrics', () => {
     // State
     serverStatus, modelName, modelContextLen, modelHasVision, lastUpdated, fetchError,
     systemMetrics,
-    raw, rates, isMtpEnabled, backendType,
+    raw, rates, lastPrefillSpeed, peakPrefillSpeed, isMtpEnabled, backendType,
     cacheHitRate, lifetimeCacheHitRate,
     mtpAcceptanceRate, lifetimeMtpAcceptanceRate,
     engineStatus,
