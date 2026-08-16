@@ -43,6 +43,26 @@
             </div>
           </div>
 
+          <!-- CPU DRAM KV Cache Offload Allocation -->
+          <div class="form-group">
+            <label class="form-label" for="cpu-offload-input">CPU DRAM KV Cache Offload Pool (GB)</label>
+            <div class="slider-row">
+              <input
+                id="cpu-offload-input"
+                class="slider"
+                type="range"
+                min="8"
+                max="128"
+                step="4"
+                v-model.number="localCpuOffloadGb"
+              />
+              <span class="slider-value">{{ localCpuOffloadGb }} GB</span>
+            </div>
+            <p class="form-hint">
+              Allocated DRAM pool for CPU KV cache swap &amp; offloading (e.g. <code>--cpu-offload-gb 40</code> or <code>--swap-space 40</code>).
+            </p>
+          </div>
+
           <div class="separator" />
 
           <!-- Export / Import -->
@@ -120,12 +140,13 @@ import { useMetricsStore } from '@/stores/metrics'
 const store = useMetricsStore()
 const emit  = defineEmits(['close', 'saved'])
 
-const localUrl      = ref(store.serverUrl)
-const localInterval = ref(store.pollIntervalMs)
-const importStatus  = ref('')
+const localUrl          = ref(store.serverUrl)
+const localInterval     = ref(store.pollIntervalMs)
+const localCpuOffloadGb = ref(store.cpuCacheOffloadGb)
+const importStatus      = ref('')
 
 function handleSave() {
-  store.updateSettings(localUrl.value, localInterval.value)
+  store.updateSettings(localUrl.value, localInterval.value, localCpuOffloadGb.value)
   emit('saved')
   emit('close')
 }

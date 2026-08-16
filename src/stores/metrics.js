@@ -126,8 +126,16 @@ export const useMetricsStore = defineStore('metrics', () => {
   const llamaCppPrevPromptSlots = ref({})   // slot_id → last known n_prompt_tokens_processed
   const llamaCppSlotGenTotal    = ref(0)    // our monotonically-increasing gen counter
 
-  // Decayed/smooth peak GPU cache usage for animated display
+  // Decayed/smooth peak GPU & CPU cache usage for animated display
   const gpuCacheUsagePeak = ref(0)
+  const cpuCacheUsagePeak = ref(0)
+
+  // Configured CPU DRAM KV cache offload capacity in GB (default 40 GB)
+  const cpuCacheOffloadGb = ref(parseFloat(localStorage.getItem('vllm-cpu-offload-gb') || '40'))
+
+  // Computed filled DRAM values in GB
+  const cpuCacheFilledGb = computed(() => (((raw.value.cpuCacheUsage || 0) * cpuCacheOffloadGb.value)).toFixed(1))
+  const cpuCachePeakFilledGb = computed(() => ((((lifetime.value.cpuCachePeak || 0) * cpuCacheOffloadGb.value))).toFixed(1))
 
   // ── Rolling sparkline history (in-session + localStorage) ──
   const saved = loadState()
@@ -163,6 +171,7 @@ export const useMetricsStore = defineStore('metrics', () => {
     firstSeenAt:    null,   // ISO string of first data point ever recorded
     lastRestartAt:  null,   // ISO string of last detected server restart
     gpuCachePeak:   0,      // persistent maximum GPU cache usage
+    cpuCachePeak:   0,      // persistent maximum CPU DRAM cache usage
   })
 
   // ── Legacy cyclical key migration ──────────────────────────────────────────
@@ -541,6 +550,16 @@ export const useMetricsStore = defineStore('metrics', () => {
         lifetime.value.gpuCachePeak = newRaw.gpuCacheUsage
       }
 
+      // Update CPU DRAM cache offload peak tracking
+      if (newRaw.cpuCacheUsage > cpuCacheUsagePeak.value) {
+        cpuCacheUsagePeak.value = newRaw.cpuCacheUsage
+      } else {
+        cpuCacheUsagePeak.value = Math.max(0, cpuCacheUsagePeak.value * 0.85 - 0.005)
+      }
+      if (newRaw.cpuCacheUsage > (lifetime.value.cpuCachePeak || 0)) {
+        lifetime.value.cpuCachePeak = newRaw.cpuCacheUsage
+      }
+
       // Update sparklines
       pushHistory('promptTokensRate', rates.value.promptTokens)
       pushHistory('genTokensRate',    rates.value.genTokens)
@@ -564,9 +583,16 @@ export const useMetricsStore = defineStore('metrics', () => {
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────────
-  function updateSettings(url, interval) {
+  function updateSettings(url, interval, cpuOffloadGb) {
     serverUrl.value = url
     pollIntervalMs.value = interval
+    if (cpuOffloadGb !== undefined && cpuOffloadGb !== null) {
+      const val = parseFloat(cpuOffloadGb)
+      if (!isNaN(val) && val > 0) {
+        cpuCacheOffloadGb.value = val
+        localStorage.setItem('vllm-cpu-offload-gb', String(val))
+      }
+    }
     localStorage.setItem('vllm-server-url', url)
     localStorage.setItem('vllm-poll-interval', String(interval))
   }
@@ -586,7 +612,7 @@ export const useMetricsStore = defineStore('metrics', () => {
       requests: 0, cacheHits: 0, cacheQueries: 0,
       specAccepted: 0, specDraft: 0,
       serverRestarts: 0, firstSeenAt: null, lastRestartAt: null,
-      gpuCachePeak: 0,
+      gpuCachePeak: 0, cpuCachePeak: 0,
     }
     persist()
   }
@@ -679,7 +705,7 @@ export const useMetricsStore = defineStore('metrics', () => {
     mtpAcceptanceRate, lifetimeMtpAcceptanceRate,
     engineStatus,
     history, timeSeries, lifetime,
-    gpuCacheUsagePeak,
+    gpuCacheUsagePeak, cpuCacheUsagePeak, cpuCacheOffloadGb, cpuCacheFilledGb, cpuCachePeakFilledGb,
     // Actions
     poll, fetchSystemMetrics, clearHistory, clearLifetime, updateSettings,
     exportData, importData,
