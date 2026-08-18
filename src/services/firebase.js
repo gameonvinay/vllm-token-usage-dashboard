@@ -105,18 +105,38 @@ function cleanupFirebase() {
 // ─── Cloud Firestore Sync ──────────────────────────────────────────────────────
 
 let debounceTimer = null
+let lastSavedSignature = ''
+let lastSaveTime = 0
+const MIN_SAVE_INTERVAL_MS = 30000 // Rate limit: maximum 1 write every 30 seconds
 
-export async function saveStateToFirestore(statePayload) {
+export async function saveStateToFirestore(statePayload, force = false) {
   if (!db || !isFirebaseConfigured()) return false
 
-  // Debounce saves by 2 seconds so we don't spam Firestore on 1s polls
+  // Change detection signature based on lifetime metrics
+  const lt = statePayload?.lifetime || {}
+  const signature = `${lt.promptTokens || 0}_${lt.genTokens || 0}_${lt.requests || 0}_${lt.cacheHits || 0}`
+
+  // 1. If values have not changed, SKIP writing to Firestore completely!
+  if (!force && signature === lastSavedSignature) {
+    return true
+  }
+
   return new Promise((resolve) => {
     if (debounceTimer) clearTimeout(debounceTimer)
 
+    const now = Date.now()
+    const elapsed = now - lastSaveTime
+    // Throttle writes: wait until at least 30s have passed since last write, or 5s debounce on activity
+    const delay = force ? 0 : (elapsed >= MIN_SAVE_INTERVAL_MS ? 5000 : Math.max(5000, MIN_SAVE_INTERVAL_MS - elapsed))
+
     debounceTimer = setTimeout(async () => {
       try {
+        lastSavedSignature = signature
+        lastSaveTime = Date.now()
+
         const metricsDoc = doc(db, COLLECTION_NAME, DOC_ID)
         await setDoc(metricsDoc, {
+          user: 'Vinay Saini',
           ...statePayload,
           updatedAt: new Date().toISOString(),
         }, { merge: true })
@@ -125,7 +145,7 @@ export async function saveStateToFirestore(statePayload) {
         console.warn('Firestore write failed:', err)
         resolve(false)
       }
-    }, 2000)
+    }, delay)
   })
 }
 
