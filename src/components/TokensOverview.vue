@@ -24,13 +24,12 @@
       icon="✨"
     />
     <StatCard
-      label="API Value / Saved"
+      label="API Cost"
       :lifetime="store.lifetimeCost"
       :sessionValue="store.sessionCost"
       :rate="null"
       :sparkData="null"
       :isCurrency="true"
-      priceBadge="Venice API Equiv"
       color="#10b981"
       glow="rgba(16,185,129,0.18)"
       icon="💰"
