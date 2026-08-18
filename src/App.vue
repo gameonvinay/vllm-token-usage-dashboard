@@ -2,7 +2,12 @@
   <div class="app-bg" />
   <div class="app-grid" />
 
-  <div class="app-shell">
+  <!-- Google 2FA OAuth Lock Screen -->
+  <Transition name="fade">
+    <AuthLockScreen v-if="!store.authLoading && !store.authUser" />
+  </Transition>
+
+  <div class="app-shell" v-if="store.authUser || store.authLoading">
     <!-- ── Header ─────────────────────────────────────────────────────────── -->
     <header class="app-header">
       <div class="app-title">
@@ -52,10 +57,12 @@
         </Transition>
 
         <!-- Owner Profile & Cloud Sync -->
-        <div class="user-chip" title="Owner: Vinay Saini — Firestore Real-Time Sync Active">
-          <span class="user-avatar-badge">👤</span>
-          <span class="user-name-text">Vinay Saini</span>
+        <div class="user-chip" :title="`Owner: ${store.authUser?.displayName || 'Vinay Saini'} (${store.authUser?.email || 'Firestore Connected'})`">
+          <img v-if="store.authUser?.photoURL" :src="store.authUser.photoURL" class="user-photo" alt="Avatar" />
+          <span v-else class="user-avatar-badge">👤</span>
+          <span class="user-name-text">{{ store.authUser?.displayName || 'Vinay Saini' }}</span>
           <span class="cloud-dot" title="Cloud Firestore Connected" />
+          <button class="btn-lock" @click="store.logout()" title="Sign Out & Lock Dashboard">🔒</button>
         </div>
 
         <!-- Status -->
@@ -146,6 +153,7 @@
 import { computed } from 'vue'
 import { useMetricsStore } from '@/stores/metrics'
 import { useMetricsPoller } from '@/composables/useMetricsPoller'
+import AuthLockScreen    from '@/components/AuthLockScreen.vue'
 import ServerStatus      from '@/components/ServerStatus.vue'
 import TokensOverview    from '@/components/TokensOverview.vue'
 import KvCacheCard       from '@/components/KvCacheCard.vue'
@@ -188,10 +196,34 @@ function formatContext(tokens) {
   font-size: 0.85rem;
 }
 
+.user-photo {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .user-name-text {
   color: var(--color-text, #f8fafc);
   font-weight: 700;
   letter-spacing: 0.01em;
+}
+
+.btn-lock {
+  background: none;
+  border: none;
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0 2px;
+  opacity: 0.6;
+  transition: opacity 0.2s, transform 0.2s;
+  display: flex;
+  align-items: center;
+}
+
+.btn-lock:hover {
+  opacity: 1;
+  transform: scale(1.15);
 }
 
 .cloud-dot {

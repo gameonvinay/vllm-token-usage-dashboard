@@ -136,6 +136,7 @@ export const useMetricsStore = defineStore('metrics', () => {
   const cloudSyncStatus = ref(isFirebaseConfigured() ? 'synced' : 'disabled') // 'disabled' | 'syncing' | 'synced' | 'error'
   const authUser        = ref(null)
   const authError       = ref(null)
+  const authLoading     = ref(true)
 
   // Initialize Firebase listeners if enabled
   if (isFirebaseConfigured()) {
@@ -147,7 +148,10 @@ export const useMetricsStore = defineStore('metrics', () => {
     })
     onAuthChange((user) => {
       authUser.value = user
+      authLoading.value = false
     })
+  } else {
+    authLoading.value = false
   }
 
   // ── llama.cpp slot-based tracking ────────────────────────────────────────
@@ -840,7 +844,7 @@ export const useMetricsStore = defineStore('metrics', () => {
     gpuCacheUsagePeak, cpuCacheUsagePeak, cpuCacheOffloadGb, cpuCacheFilledGb, cpuCachePeakFilledGb,
     gpuKvCacheCapacityGb, gpuKvCacheTokensCapacity, gpuCacheFilledGb, gpuActiveTokens,
     // Firebase State
-    firebaseConfig, cloudSyncStatus, authUser, authError,
+    firebaseConfig, cloudSyncStatus, authUser, authError, authLoading,
     // Actions
     poll, fetchSystemMetrics, clearHistory, clearLifetime, updateSettings,
     exportData, importData, loginWithGoogle, logout, updateFirebase,
