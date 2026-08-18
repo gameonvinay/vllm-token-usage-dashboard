@@ -32,14 +32,14 @@ export function getSavedFirebaseConfig() {
   }
 
   return {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    storageBucket: '',
-    messagingSenderId: '',
-    appId: '',
-    enabled: false,
-    authEnabled: false,
+    apiKey: 'AIzaSyCnz6CemdTh0Q60E9vHQLDm8RJvTIAlOCo',
+    authDomain: 'llm-dashboard-gameonvinay.firebaseapp.com',
+    projectId: 'llm-dashboard-gameonvinay',
+    storageBucket: 'llm-dashboard-gameonvinay.firebasestorage.app',
+    messagingSenderId: '225579938921',
+    appId: '1:225579938921:web:a9cdd34a2e446d8116def8',
+    enabled: true,
+    authEnabled: true,
   }
 }
 
