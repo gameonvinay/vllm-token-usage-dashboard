@@ -26,10 +26,10 @@
       </div>
 
       <div class="summary-card glass-card">
-        <div class="summary-icon" style="background: rgba(0, 212, 170, 0.15); color: #00d4aa">🔑</div>
+        <div class="summary-icon" style="background: rgba(0, 212, 170, 0.15); color: #00d4aa">💰</div>
         <div class="summary-data">
-          <div class="summary-label">Allocated Keys</div>
-          <div class="summary-value">{{ usersList.length }}</div>
+          <div class="summary-label">Total API Spend</div>
+          <div class="summary-value">${{ totalUsersSpend.toFixed(2) }}</div>
         </div>
       </div>
 
@@ -99,9 +99,9 @@
           </div>
 
           <div class="limit-box">
-            <span class="limit-lbl">Token Budget</span>
+            <span class="limit-lbl">Total Spend</span>
             <span class="limit-val accent-amber">
-              {{ typeof user.maxBudget === 'number' ? '$' + user.maxBudget : user.maxBudget }}
+              ${{ (user.spend || 0).toFixed(2) }}
             </span>
           </div>
 
@@ -225,7 +225,7 @@ export ANTHROPIC_MODEL="Qwen3.8-27B"</code></pre>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 const showCreateModal = ref(false)
 const newUserName = ref('')
@@ -246,7 +246,7 @@ const usersList = ref([
     isOwner: true,
     tpmLimit: 'Unlimited',
     rpmLimit: 'Unlimited',
-    maxBudget: 'Unlimited',
+    spend: 0.0,
     status: 'Active',
     models: ['Qwen3.8-27B', 'All Models'],
     createdAt: '2026-08-15',
@@ -259,7 +259,7 @@ const usersList = ref([
     isOwner: false,
     tpmLimit: 500000,
     rpmLimit: 120,
-    maxBudget: 2000,
+    spend: 0.0,
     status: 'Active',
     models: ['Qwen3.8-27B'],
     createdAt: '2026-08-18',
@@ -272,12 +272,16 @@ const usersList = ref([
     isOwner: false,
     tpmLimit: 500000,
     rpmLimit: 120,
-    maxBudget: 2000,
+    spend: 0.0,
     status: 'Active',
     models: ['Qwen3.8-27B'],
     createdAt: '2026-08-18',
   }
 ])
+
+const totalUsersSpend = computed(() => {
+  return usersList.value.reduce((sum, u) => sum + (u.spend || 0), 0)
+})
 
 async function fetchUsers() {
   try {

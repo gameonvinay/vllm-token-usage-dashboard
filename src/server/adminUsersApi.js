@@ -106,13 +106,28 @@ export async function handleAdminUsersRequest(req, res) {
         }
       ]
 
-      // Query detailed info for any dynamically added keys
-      const detailedUsers = [...knownUsers]
+      // Query live spend & quota info from LiteLLM proxy
+      const detailedUsers = await Promise.all(knownUsers.map(async (u) => {
+        try {
+          const keyInfo = await litellmRequest('GET', `/key/info?key=${encodeURIComponent(u.apiKey)}`)
+          const info = keyInfo.data?.info || {}
+          return {
+            ...u,
+            spend: typeof info.spend === 'number' ? info.spend : 0.0,
+            maxBudget: typeof info.max_budget === 'number' ? info.max_budget : u.maxBudget,
+          }
+        } catch {
+          return { ...u, spend: 0.0 }
+        }
+      }))
+
+      const totalSpend = detailedUsers.reduce((sum, u) => sum + (u.spend || 0), 0)
 
       res.statusCode = 200
       res.end(JSON.stringify({
         users: detailedUsers,
         totalKeys: keyTokens.length + 1,
+        totalSpend: totalSpend,
         engineOwner: 'Vinay Saini',
       }))
     } catch (err) {
