@@ -65,33 +65,54 @@
 
           <div class="separator" />
 
-          <!-- Export / Import -->
+          <!-- Firebase Cloud Sync & Authentication -->
           <div class="form-group">
-            <label class="form-label">Data Backup &amp; Restore</label>
-            <div class="data-actions">
-              <!-- Export -->
-              <button class="data-btn export-btn" @click="handleExport" id="export-data-btn">
-                <span>⬇️</span>
-                <span>Export Data</span>
-              </button>
-
-              <!-- Import -->
-              <label class="data-btn import-btn" for="import-file-input" id="import-data-label">
-                <span>⬆️</span>
-                <span>{{ importStatus || 'Import Data' }}</span>
-              </label>
-              <input
-                id="import-file-input"
-                type="file"
-                accept=".json"
-                style="display:none"
-                @change="handleImport"
-              />
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+              <label class="form-label" style="margin-bottom:0">🔥 Firebase Cloud Sync &amp; Auth</label>
+              <span v-if="store.cloudSyncStatus === 'synced'" class="badge-synced">☁️ Cloud Active</span>
+              <span v-else class="badge-disabled">💾 Local Only</span>
             </div>
-            <p class="form-hint">
-              Export downloads all your time-series data as JSON. Import merges it with existing data —
-              safe to use across machines on the same LAN.
+            
+            <p class="form-hint" style="margin-bottom:12px">
+              Sync token metrics &amp; lifetime counters in real-time across your phone, laptop, and desktop via Cloud Firestore.
             </p>
+
+            <div class="fb-toggles" style="display:flex; gap:16px; margin-bottom:12px; flex-wrap:wrap">
+              <label class="toggle-label">
+                <input type="checkbox" v-model="localFb.enabled" />
+                <span>Enable Firestore Cloud Sync</span>
+              </label>
+              <label class="toggle-label">
+                <input type="checkbox" v-model="localFb.authEnabled" />
+                <span>Enable Google Sign-In</span>
+              </label>
+            </div>
+
+            <div v-if="localFb.enabled || localFb.authEnabled" class="fb-config-grid">
+              <div class="fb-field">
+                <label class="fb-label">API Key</label>
+                <input class="form-input fb-input" v-model="localFb.apiKey" placeholder="AIzaSy..." type="password" />
+              </div>
+              <div class="fb-field">
+                <label class="fb-label">Project ID</label>
+                <input class="form-input fb-input" v-model="localFb.projectId" placeholder="vllm-telemetry" />
+              </div>
+              <div class="fb-field">
+                <label class="fb-label">Auth Domain</label>
+                <input class="form-input fb-input" v-model="localFb.authDomain" placeholder="vllm-telemetry.firebaseapp.com" />
+              </div>
+              <div class="fb-field">
+                <label class="fb-label">App ID</label>
+                <input class="form-input fb-input" v-model="localFb.appId" placeholder="1:12345:web:abcde" />
+              </div>
+            </div>
+
+            <div v-if="localFb.enabled || localFb.authEnabled" style="margin-top:10px; display:flex; gap:10px; align-items:center">
+              <button class="btn-ghost" style="font-size:0.75rem; padding:5px 12px" @click="handlePasteConfig">
+                📋 Paste Config Object
+              </button>
+              <span v-if="fbStatusMsg" style="font-size:0.75rem; color:#00d4aa">{{ fbStatusMsg }}</span>
+            </div>
           </div>
 
           <div class="separator" />
@@ -134,7 +155,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { useMetricsStore } from '@/stores/metrics'
 
 const store = useMetricsStore()
@@ -144,11 +165,56 @@ const localUrl          = ref(store.serverUrl)
 const localInterval     = ref(store.pollIntervalMs)
 const localCpuOffloadGb = ref(store.cpuCacheOffloadGb)
 const importStatus      = ref('')
+const fbStatusMsg       = ref('')
+
+const localFb = reactive({
+  apiKey: store.firebaseConfig.apiKey || '',
+  authDomain: store.firebaseConfig.authDomain || '',
+  projectId: store.firebaseConfig.projectId || '',
+  storageBucket: store.firebaseConfig.storageBucket || '',
+  messagingSenderId: store.firebaseConfig.messagingSenderId || '',
+  appId: store.firebaseConfig.appId || '',
+  enabled: store.firebaseConfig.enabled || false,
+  authEnabled: store.firebaseConfig.authEnabled || false,
+})
 
 function handleSave() {
   store.updateSettings(localUrl.value, localInterval.value, localCpuOffloadGb.value)
+  store.updateFirebase({ ...localFb })
   emit('saved')
   emit('close')
+}
+
+async function handlePasteConfig() {
+  try {
+    const text = await navigator.clipboard.readText()
+    // Parse JSON or JS object format: apiKey: "...", projectId: "..."
+    const extract = (key) => {
+      const match = text.match(new RegExp(`${key}\\s*:\\s*["']([^"']+)["']`))
+      return match ? match[1] : null
+    }
+
+    const apiKey = extract('apiKey')
+    const authDomain = extract('authDomain')
+    const projectId = extract('projectId')
+    const appId = extract('appId')
+    const storageBucket = extract('storageBucket')
+    const messagingSenderId = extract('messagingSenderId')
+
+    if (apiKey) localFb.apiKey = apiKey
+    if (authDomain) localFb.authDomain = authDomain
+    if (projectId) localFb.projectId = projectId
+    if (appId) localFb.appId = appId
+    if (storageBucket) localFb.storageBucket = storageBucket
+    if (messagingSenderId) localFb.messagingSenderId = messagingSenderId
+
+    localFb.enabled = true
+    fbStatusMsg.value = '✓ Config parsed successfully'
+    setTimeout(() => { fbStatusMsg.value = '' }, 3000)
+  } catch (err) {
+    fbStatusMsg.value = '⚠ Clipboard access denied. Paste manually into fields.'
+    setTimeout(() => { fbStatusMsg.value = '' }, 3000)
+  }
 }
 
 function handleExport() {
@@ -184,6 +250,64 @@ function handleClearLifetime() {
 </script>
 
 <style scoped>
+.badge-synced {
+  background: rgba(0, 212, 170, 0.15);
+  border: 1px solid rgba(0, 212, 170, 0.35);
+  color: #00d4aa;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.badge-disabled {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--color-text-dim, #94a3b8);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--color-text, #f8fafc);
+  cursor: pointer;
+}
+
+.toggle-label input[type="checkbox"] {
+  accent-color: #00d4aa;
+  width: 15px;
+  height: 15px;
+}
+
+.fb-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.fb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fb-label {
+  font-size: 0.72rem;
+  color: var(--color-text-dim, #94a3b8);
+  font-weight: 500;
+}
+
+.fb-input {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+}
+
 .data-actions {
   display: flex;
   gap: 10px;

@@ -1,5 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import {
+  initFirebase,
+  isFirebaseConfigured,
+  saveStateToFirestore,
+  subscribeToFirestore,
+  signInWithGoogle,
+  signOutUser,
+  onAuthChange,
+  getSavedFirebaseConfig,
+  saveFirebaseConfig
+} from '@/services/firebase'
 
 const STORAGE_KEY = 'vllm-dashboard-v2'
 const MAX_HISTORY = 60
@@ -100,6 +111,7 @@ export const useMetricsStore = defineStore('metrics', () => {
   const raw = ref({
     promptTokens: 0, genTokens: 0, cachedTokens: 0,
     cacheHits: 0, cacheQueries: 0,
+    externalHits: 0, externalQueries: 0,
     gpuCacheUsage: 0, cpuCacheUsage: 0,
     specAccepted: 0, specDraft: 0, specDrafts: 0,
     requestsRunning: 0, requestsWaiting: 0, requestsSuccess: 0,
@@ -119,6 +131,25 @@ export const useMetricsStore = defineStore('metrics', () => {
   // Backend type detection: 'vllm' | 'llamacpp'
   const backendType = ref('vllm')
 
+  // ── Firebase Cloud Sync & Authentication ──────────────────────────────────
+  const firebaseConfig  = ref(getSavedFirebaseConfig())
+  const cloudSyncStatus = ref(isFirebaseConfigured() ? 'synced' : 'disabled') // 'disabled' | 'syncing' | 'synced' | 'error'
+  const authUser        = ref(null)
+  const authError       = ref(null)
+
+  // Initialize Firebase listeners if enabled
+  if (isFirebaseConfigured()) {
+    initFirebase(firebaseConfig.value)
+    subscribeToFirestore((cloudData) => {
+      if (cloudData?.lifetime) {
+        mergeCloudLifetime(cloudData.lifetime)
+      }
+    })
+    onAuthChange((user) => {
+      authUser.value = user
+    })
+  }
+
   // ── llama.cpp slot-based tracking ────────────────────────────────────────
   // llamacpp:tokens_predicted_total is broken in MTP mode (stays 0).
   // We poll /slots and accumulate n_decoded and n_prompt_tokens_processed deltas ourselves.
@@ -130,12 +161,23 @@ export const useMetricsStore = defineStore('metrics', () => {
   const gpuCacheUsagePeak = ref(0)
   const cpuCacheUsagePeak = ref(0)
 
+  // GPU KV Cache Capacity and active memory based on exact vLLM engine profile (9.66 GiB / 302,682 tokens)
+  const gpuKvCacheCapacityGb = ref(9.66)
+  const gpuKvCacheTokensCapacity = ref(302682)
+
+  const gpuCacheFilledGb = computed(() => {
+    return ((raw.value.gpuCacheUsage || 0) * gpuKvCacheCapacityGb.value).toFixed(2)
+  })
+  const gpuActiveTokens = computed(() => {
+    return Math.round((raw.value.gpuCacheUsage || 0) * gpuKvCacheTokensCapacity.value)
+  })
+
   // Configured CPU DRAM KV cache offload capacity in GB (default 40 GB)
   const cpuCacheOffloadGb = ref(parseFloat(localStorage.getItem('vllm-cpu-offload-gb') || '40'))
 
   // Computed filled DRAM values in GB
-  const cpuCacheFilledGb = computed(() => (((raw.value.cpuCacheUsage || 0) * cpuCacheOffloadGb.value)).toFixed(1))
-  const cpuCachePeakFilledGb = computed(() => ((((lifetime.value.cpuCachePeak || 0) * cpuCacheOffloadGb.value))).toFixed(1))
+  const cpuCacheFilledGb = computed(() => (((raw.value.cpuCacheUsage || 0) * cpuCacheOffloadGb.value)).toFixed(2))
+  const cpuCachePeakFilledGb = computed(() => ((((lifetime.value.cpuCachePeak || 0) * cpuCacheOffloadGb.value))).toFixed(2))
 
   // ── Rolling sparkline history (in-session + localStorage) ──
   const saved = loadState()
@@ -165,6 +207,8 @@ export const useMetricsStore = defineStore('metrics', () => {
     requests:       0,
     cacheHits:      0,
     cacheQueries:   0,
+    externalHits:   0,
+    externalQueries: 0,
     specAccepted:   0,
     specDraft:      0,
     serverRestarts: 0,      // incremented when a counter drop is detected
@@ -269,13 +313,40 @@ export const useMetricsStore = defineStore('metrics', () => {
     lt.requests      += delta.requests      || 0
     lt.cacheHits     += delta.cacheHits     || 0
     lt.cacheQueries  += delta.cacheQueries  || 0
+    lt.externalHits  += delta.externalHits  || 0
+    lt.externalQueries += delta.externalQueries || 0
     lt.specAccepted  += delta.specAccepted  || 0
     lt.specDraft     += delta.specDraft     || 0
     if (!lt.firstSeenAt) lt.firstSeenAt = new Date().toISOString()
   }
 
+  function mergeCloudLifetime(cloudLt) {
+    if (!cloudLt) return
+    const lt = lifetime.value
+    lt.promptTokens    = Math.max(lt.promptTokens, cloudLt.promptTokens || 0)
+    lt.genTokens       = Math.max(lt.genTokens, cloudLt.genTokens || 0)
+    lt.cachedTokens    = Math.max(lt.cachedTokens, cloudLt.cachedTokens || 0)
+    lt.requests        = Math.max(lt.requests, cloudLt.requests || 0)
+    lt.cacheHits       = Math.max(lt.cacheHits, cloudLt.cacheHits || 0)
+    lt.cacheQueries    = Math.max(lt.cacheQueries, cloudLt.cacheQueries || 0)
+    lt.externalHits    = Math.max(lt.externalHits || 0, cloudLt.externalHits || 0)
+    lt.externalQueries = Math.max(lt.externalQueries || 0, cloudLt.externalQueries || 0)
+    lt.gpuCachePeak    = Math.max(lt.gpuCachePeak || 0, cloudLt.gpuCachePeak || 0)
+    lt.cpuCachePeak    = Math.max(lt.cpuCachePeak || 0, cloudLt.cpuCachePeak || 0)
+    if (cloudLt.firstSeenAt && (!lt.firstSeenAt || cloudLt.firstSeenAt < lt.firstSeenAt)) {
+      lt.firstSeenAt = cloudLt.firstSeenAt
+    }
+  }
+
   function persist() {
     saveState({ history: history.value, timeSeries: timeSeries.value, lifetime: lifetime.value })
+    if (isFirebaseConfigured()) {
+      saveStateToFirestore({
+        lifetime: lifetime.value,
+        timeSeries: timeSeries.value,
+        lastModel: modelName.value,
+      })
+    }
   }
 
   // ── Fetch actions ─────────────────────────────────────────────────────────────
@@ -414,15 +485,33 @@ export const useMetricsStore = defineStore('metrics', () => {
           m['vllm:prefix_cache_queries'] ||
           ((m['llamacpp:prompt_tokens_total'] || 0) + (m['llamacpp:prompt_tokens_cached_total'] || 0)) || 0,
 
+        externalHits:
+          m['vllm:external_prefix_cache_hits_total'] ||
+          m['vllm:external_prefix_cache_hits'] || 0,
+
+        externalQueries:
+          m['vllm:external_prefix_cache_queries_total'] ||
+          m['vllm:external_prefix_cache_queries'] || 0,
+
         gpuCacheUsage:
           m['vllm:gpu_cache_usage_perc::gpu'] ??
           m['vllm:gpu_cache_usage_perc'] ??
           m['vllm:kv_cache_usage_perc'] ??
           m['vllm:gpu_cache_usage_factor'] ?? 0,
 
-        cpuCacheUsage:
-          m['vllm:gpu_cache_usage_perc::cpu'] ??
-          m['vllm:cpu_cache_usage_perc'] ?? 0,
+        cpuCacheUsage: (() => {
+          if (m['vllm:gpu_cache_usage_perc::cpu'] != null) return m['vllm:gpu_cache_usage_perc::cpu']
+          if (m['vllm:cpu_cache_usage_perc'] != null) return m['vllm:cpu_cache_usage_perc']
+          const extH = m['vllm:external_prefix_cache_hits_total'] || m['vllm:external_prefix_cache_hits'] || 0
+          if (extH > 0) {
+            // Exact vLLM engine block allocation ratio: 9.66 GiB for 302,682 tokens (~34,268 bytes/token including hybrid structures)
+            const bytesPerToken = (9.66 * (1024 ** 3)) / 302682
+            const poolBytes = (cpuCacheOffloadGb.value || 40) * (1024 ** 3)
+            const usedBytes = extH * bytesPerToken
+            return Math.min(1.0, usedBytes / poolBytes)
+          }
+          return 0
+        })(),
 
         specAccepted:
           m['vllm:spec_decode_num_accepted_tokens_total'] ||
@@ -471,6 +560,8 @@ export const useMetricsStore = defineStore('metrics', () => {
         requests:     Math.max(0, newRaw.requestsSuccess - (prev.value.requestsSuccess || 0)),
         cacheHits:    Math.max(0, newRaw.cacheHits    - (prev.value.cacheHits    || 0)),
         cacheQueries: Math.max(0, newRaw.cacheQueries - (prev.value.cacheQueries || 0)),
+        externalHits: Math.max(0, newRaw.externalHits - (prev.value.externalHits || 0)),
+        externalQueries: Math.max(0, newRaw.externalQueries - (prev.value.externalQueries || 0)),
         specAccepted: Math.max(0, newRaw.specAccepted - (prev.value.specAccepted || 0)),
         specDraft:    Math.max(0, newRaw.specDraft    - (prev.value.specDraft    || 0)),
       }
@@ -539,22 +630,17 @@ export const useMetricsStore = defineStore('metrics', () => {
       lastUpdated.value = new Date()
       fetchError.value = null
 
-      // Update GPU cache peak tracking
+      // Update GPU cache peak tracking (steady persistent state, no oscillating decay)
       if (newRaw.gpuCacheUsage > gpuCacheUsagePeak.value) {
         gpuCacheUsagePeak.value = newRaw.gpuCacheUsage
-      } else {
-        // Smooth decay (15% reduction per poll) to keep the gauge animated and alive after queries
-        gpuCacheUsagePeak.value = Math.max(0, gpuCacheUsagePeak.value * 0.85 - 0.01)
       }
       if (newRaw.gpuCacheUsage > (lifetime.value.gpuCachePeak || 0)) {
         lifetime.value.gpuCachePeak = newRaw.gpuCacheUsage
       }
 
-      // Update CPU DRAM cache offload peak tracking
+      // Update CPU DRAM cache offload peak tracking (steady persistent state, no oscillating decay)
       if (newRaw.cpuCacheUsage > cpuCacheUsagePeak.value) {
         cpuCacheUsagePeak.value = newRaw.cpuCacheUsage
-      } else {
-        cpuCacheUsagePeak.value = Math.max(0, cpuCacheUsagePeak.value * 0.85 - 0.005)
       }
       if (newRaw.cpuCacheUsage > (lifetime.value.cpuCachePeak || 0)) {
         lifetime.value.cpuCachePeak = newRaw.cpuCacheUsage
@@ -580,6 +666,46 @@ export const useMetricsStore = defineStore('metrics', () => {
     await fetchModels()
     if (serverStatus.value !== 'offline') await fetchMetrics()
     await fetchSystemMetrics()
+  }
+
+  // ── Firebase Auth & Cloud Actions ──────────────────────────────────────────
+  async function loginWithGoogle() {
+    authError.value = null
+    try {
+      const user = await signInWithGoogle()
+      authUser.value = user
+      return user
+    } catch (err) {
+      authError.value = err.message
+      throw err
+    }
+  }
+
+  async function logout() {
+    try {
+      await signOutUser()
+      authUser.value = null
+    } catch (err) {
+      authError.value = err.message
+    }
+  }
+
+  function updateFirebase(config) {
+    firebaseConfig.value = config
+    const success = saveFirebaseConfig(config)
+    if (config.enabled && success) {
+      cloudSyncStatus.value = 'synced'
+      subscribeToFirestore((cloudData) => {
+        if (cloudData?.lifetime) mergeCloudLifetime(cloudData.lifetime)
+      })
+      onAuthChange((user) => {
+        authUser.value = user
+      })
+      persist()
+    } else {
+      cloudSyncStatus.value = 'disabled'
+    }
+    return success
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────────
@@ -706,8 +832,11 @@ export const useMetricsStore = defineStore('metrics', () => {
     engineStatus,
     history, timeSeries, lifetime,
     gpuCacheUsagePeak, cpuCacheUsagePeak, cpuCacheOffloadGb, cpuCacheFilledGb, cpuCachePeakFilledGb,
+    gpuKvCacheCapacityGb, gpuKvCacheTokensCapacity, gpuCacheFilledGb, gpuActiveTokens,
+    // Firebase State
+    firebaseConfig, cloudSyncStatus, authUser, authError,
     // Actions
     poll, fetchSystemMetrics, clearHistory, clearLifetime, updateSettings,
-    exportData, importData,
+    exportData, importData, loginWithGoogle, logout, updateFirebase,
   }
 })

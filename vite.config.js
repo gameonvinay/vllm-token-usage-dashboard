@@ -49,6 +49,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: true,
     watch: {
       usePolling: true,
       interval: 1000,

@@ -813,24 +813,36 @@ body {
 }
 
 /* =====================================================
-   DIAGNOSTIC DASHBOARD GRID
+   DIAGNOSTIC DASHBOARD GRID (BIG KV CACHE + 3 SMALL CARDS)
    ===================================================== */
 .diagnostic-grid {
   display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  margin-bottom: 14px;
+  gap: 14px;
+  grid-template-columns: 1fr;
+  margin-bottom: 22px;
   align-items: stretch;
 }
 
-.diagnostic-grid > .section {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 0;
+@media (min-width: 768px) {
+  .diagnostic-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .kv-card-featured {
+    grid-column: 1 / -1;
+  }
 }
 
-.diagnostic-grid > .section > *:not(.section-header) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+@media (min-width: 1100px) {
+  /* When MTP is disabled (3 items total: 1 big + 2 small) */
+  .diagnostic-grid {
+    grid-template-columns: 2fr 1fr 1fr;
+  }
+  .kv-card-featured {
+    grid-column: auto;
+  }
+
+  /* When MTP is enabled (4 items total: 1 big + 3 small) */
+  .diagnostic-grid.has-mtp {
+    grid-template-columns: 2.2fr 1fr 1fr 1fr;
+  }
 }

@@ -51,6 +51,36 @@
           </div>
         </Transition>
 
+        <!-- Cloud Sync Badge -->
+        <Transition name="fade">
+          <div
+            v-if="store.cloudSyncStatus === 'synced'"
+            class="meta-badge cloud-badge"
+            title="Cloud Firestore Realtime Sync Active (Click to configure)"
+            @click="showSettings = true"
+            style="cursor: pointer"
+          >
+            ☁️ Cloud
+          </div>
+        </Transition>
+
+        <!-- Google Auth chip (if enabled) -->
+        <div v-if="store.firebaseConfig.authEnabled" class="auth-chip">
+          <template v-if="store.authUser">
+            <img
+              v-if="store.authUser.photoURL"
+              :src="store.authUser.photoURL"
+              class="user-avatar"
+              :title="store.authUser.displayName || store.authUser.email"
+            />
+            <span class="user-name">{{ store.authUser.displayName?.split(' ')[0] || 'User' }}</span>
+            <button class="btn-logout" @click="store.logout()" title="Sign Out">✕</button>
+          </template>
+          <button v-else class="btn-signin" @click="handleGoogleLogin">
+            🔑 Sign In
+          </button>
+        </div>
+
         <!-- Status -->
         <ServerStatus :status="store.serverStatus" />
 
@@ -112,38 +142,25 @@
 
     <div class="section-divider" />
 
-    <!-- ── Diagnostic Panels Grid ────────────────────────────────────────── -->
-    <div class="diagnostic-grid">
-      <!-- ── Cache Performance (vLLM only — llama.cpp doesn't expose cache metrics) -->
+    <!-- ── Core Engine & Cache Telemetry Cards (Big KV Cache + Small Side Cards) ──── -->
+    <div class="diagnostic-grid" :class="{ 'has-mtp': store.isMtpEnabled }">
+      <!-- 1. KV Cache Allocation -->
       <Transition name="fade">
-        <section v-if="store.backendType !== 'llamacpp'" class="section">
-          <div class="section-header">
-            <div class="section-dot" style="background: #f59e0b" />
-            <span class="section-label">Cache Performance</span>
-          </div>
-          <CachePanel />
-        </section>
+        <KvCacheCard v-if="store.backendType !== 'llamacpp'" />
       </Transition>
 
-      <!-- ── MTP (auto-hidden if not running speculative decode) ───────────── -->
+      <!-- 2. Cache Performance -->
       <Transition name="fade">
-        <section v-if="store.isMtpEnabled" class="section">
-          <div class="section-header">
-            <div class="section-dot" style="background: #ec4899" />
-            <span class="section-label">MTP Speculative</span>
-          </div>
-          <MtpPanel />
-        </section>
+        <CacheHitCard v-if="store.backendType !== 'llamacpp'" />
       </Transition>
 
-      <!-- ── Engine Health ───────────────────────────────────────────────────── -->
-      <section class="section">
-        <div class="section-header">
-          <div class="section-dot" style="background: #10b981" />
-          <span class="section-label">Engine Health</span>
-        </div>
-        <EnginePanel />
-      </section>
+      <!-- 3. MTP Speculative (auto-hidden if not active) -->
+      <Transition name="fade">
+        <MtpPanel v-if="store.isMtpEnabled" />
+      </Transition>
+
+      <!-- 4. Engine Health -->
+      <EnginePanel />
     </div>
 
     <div class="section-divider" />
@@ -182,7 +199,8 @@ import { useMetricsStore } from '@/stores/metrics'
 import { useMetricsPoller } from '@/composables/useMetricsPoller'
 import ServerStatus      from '@/components/ServerStatus.vue'
 import TokensOverview    from '@/components/TokensOverview.vue'
-import CachePanel        from '@/components/CachePanel.vue'
+import KvCacheCard       from '@/components/KvCacheCard.vue'
+import CacheHitCard      from '@/components/CacheHitCard.vue'
 import MtpPanel          from '@/components/MtpPanel.vue'
 import EnginePanel       from '@/components/EnginePanel.vue'
 import SystemInfoSection from '@/components/SystemInfoSection.vue'
@@ -205,9 +223,72 @@ function formatContext(tokens) {
   }
   return `${tokens} ctx`
 }
+
+async function handleGoogleLogin() {
+  try {
+    await store.loginWithGoogle()
+  } catch (err) {
+    alert('Google Sign-In failed: ' + (err.message || err))
+  }
+}
 </script>
 
 <style scoped>
+.cloud-badge {
+  background: rgba(0, 212, 170, 0.12);
+  color: #00d4aa;
+  border-color: rgba(0, 212, 170, 0.3);
+}
+
+.auth-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+}
+
+.user-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+
+.user-name {
+  color: var(--color-text, #f8fafc);
+  font-weight: 600;
+}
+
+.btn-logout {
+  background: none;
+  border: none;
+  color: var(--color-text-dim, #94a3b8);
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.btn-logout:hover {
+  color: #ef4444;
+}
+
+.btn-signin {
+  background: rgba(124, 111, 247, 0.15);
+  border: 1px solid rgba(124, 111, 247, 0.35);
+  color: #a59df9;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-signin:hover {
+  background: rgba(124, 111, 247, 0.25);
+}
+
 .offline-notice {
   display: flex;
   align-items: flex-start;

@@ -44,9 +44,14 @@
         <div class="kv-title-group">
           <span class="kv-card-title">KV Cache Allocation</span>
         </div>
-        <span class="kv-offload-pill" :title="`CPU DRAM Offload capacity: ${store.cpuCacheOffloadGb} GB`">
-          🖥️ {{ store.cpuCacheOffloadGb }}GB CPU DRAM
-        </span>
+        <div class="kv-pills-group">
+          <span class="kv-vram-pill" :title="`GPU KV Cache Capacity: ${store.gpuKvCacheCapacityGb} GB (${fmt(store.gpuKvCacheTokensCapacity || 302682)} tokens)`">
+            ⚡ {{ store.gpuKvCacheCapacityGb }}GB GPU
+          </span>
+          <span class="kv-offload-pill" :title="`CPU DRAM Offload capacity: ${store.cpuCacheOffloadGb} GB`">
+            🖥️ {{ store.cpuCacheOffloadGb }}GB CPU
+          </span>
+        </div>
       </div>
 
       <div class="kv-gauges-grid">
@@ -61,12 +66,16 @@
           />
           <div class="kv-stats-box">
             <div class="stat-mini-row">
-              <span class="stat-mini-lbl">Current</span>
-              <span class="stat-mini-val">{{ (store.raw.gpuCacheUsage * 100).toFixed(0) }}%</span>
+              <span class="stat-mini-lbl">Capacity</span>
+              <span class="stat-mini-val accent-gpu">
+                {{ store.gpuKvCacheCapacityGb }} <span class="unit-sub">GB ({{ fmt(store.gpuKvCacheTokensCapacity || 302682) }} tok)</span>
+              </span>
             </div>
             <div class="stat-mini-row">
-              <span class="stat-mini-lbl">Peak</span>
-              <span class="stat-mini-val accent-gpu">{{ ((store.lifetime.gpuCachePeak || 0) * 100).toFixed(0) }}%</span>
+              <span class="stat-mini-lbl">Active</span>
+              <span class="stat-mini-val">
+                {{ store.gpuCacheFilledGb }} <span class="unit-sub">GB ({{ fmt(store.gpuActiveTokens || 0) }} tok)</span>
+              </span>
             </div>
           </div>
         </div>
@@ -90,9 +99,9 @@
               </span>
             </div>
             <div class="stat-mini-row">
-              <span class="stat-mini-lbl">Peak</span>
-              <span class="stat-mini-val accent-cpu">
-                {{ store.cpuCachePeakFilledGb }} GB <span class="unit-sub">({{ ((store.lifetime.cpuCachePeak || 0) * 100).toFixed(0) }}%)</span>
+              <span class="stat-mini-lbl">Offload Hits</span>
+              <span class="stat-mini-val accent-cpu" :title="`${(store.raw.externalHits || 0).toLocaleString()} tokens loaded from CPU RAM`">
+                {{ fmt(store.raw.externalHits || 0) }} <span class="unit-sub">tok</span>
               </span>
             </div>
           </div>
@@ -103,8 +112,8 @@
       <div class="cpu-dram-status-bar">
         <div class="dram-bar-labels">
           <span class="dram-status-tag">
-            <span class="live-dot" :class="{ active: (store.raw.cpuCacheUsage > 0.001) }" />
-            {{ store.raw.cpuCacheUsage > 0.001 ? 'CPU Offload Active' : 'CPU Offload Standby' }}
+            <span class="live-dot" :class="{ active: (store.raw.cpuCacheUsage > 0.001 || store.raw.externalQueries > 0) }" />
+            {{ (store.raw.cpuCacheUsage > 0.001 || store.raw.externalQueries > 0) ? 'CPU Offload Active' : 'CPU Offload Standby' }}
           </span>
           <span class="dram-fill-text">
             <strong>{{ (store.cpuCacheOffloadGb - store.cpuCacheFilledGb).toFixed(1) }} GB</strong> free
@@ -247,6 +256,22 @@ function fmt(n) {
   letter-spacing: 0.08em;
   color: var(--color-text-muted);
   font-weight: 600;
+}
+
+.kv-pills-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kv-vram-pill {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #a59df9;
+  background: rgba(124, 111, 247, 0.1);
+  border: 1px solid rgba(124, 111, 247, 0.25);
+  border-radius: 12px;
+  padding: 2px 7px;
 }
 
 .kv-offload-pill {

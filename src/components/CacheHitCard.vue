@@ -1,62 +1,48 @@
 <template>
-  <div class="glass-card mtp-card">
+  <div class="glass-card hit-rate-card">
     <div class="card-header-mini">
       <div class="title-group">
-        <div class="section-dot" style="background: #ec4899" />
-        <span class="card-title">MTP Speculative</span>
+        <div class="section-dot" style="background: #f59e0b" />
+        <span class="card-title">Cache Performance</span>
       </div>
-      <span class="type-pill">Spec Decode</span>
+      <span class="type-pill">Prefix Cache</span>
     </div>
 
-    <div class="mtp-hero">
-      <div class="mtp-left">
-        <div class="mtp-rate-pct">{{ acceptanceDisplay }}</div>
-        <div class="mtp-sub">Acceptance Rate</div>
-      </div>
-      <GaugeRing
-        :value="store.mtpAcceptanceRate ?? 0"
-        label="Efficiency"
-        color="#ec4899"
-        :size="58"
-        :strokeWidth="5.5"
-      />
+    <div class="hit-rate-hero">
+      <div class="hit-rate-pct">{{ hitRateDisplay }}</div>
+      <div class="hit-rate-sub">Hit Rate</div>
     </div>
 
     <div class="sparkline-wrap">
       <SparklineChart
-        :data="store.history.mtpAcceptanceRate"
-        color="#ec4899"
+        :data="store.history.cacheHitRate"
+        color="#f59e0b"
         :width="260"
-        :height="32"
+        :height="36"
       />
     </div>
 
     <div class="card-footer">
       <span class="meta-stat">
-        <span class="meta-label">Accepted</span>
-        <span class="meta-val accent-pink">{{ fmt(store.raw.specAccepted) }}</span>
+        <span class="meta-label">Hits</span>
+        <span class="meta-val accent-amber">{{ fmt(store.raw.cacheHits) }}</span>
       </span>
       <span class="meta-sep">·</span>
       <span class="meta-stat">
-        <span class="meta-label">Draft</span>
-        <span class="meta-val">{{ fmt(store.raw.specDraft) }}</span>
-      </span>
-      <span class="meta-sep">·</span>
-      <span class="meta-stat">
-        <span class="meta-label">Cycles</span>
-        <span class="meta-val">{{ fmt(store.raw.specDrafts) }}</span>
+        <span class="meta-label">Queries</span>
+        <span class="meta-val">{{ fmt(store.raw.cacheQueries) }}</span>
       </span>
     </div>
 
-    <!-- Lifetime acceptance rate -->
-    <div v-if="store.lifetimeMtpAcceptanceRate !== null" class="lifetime-row">
+    <!-- Lifetime hit rate -->
+    <div v-if="store.lifetimeCacheHitRate !== null" class="lifetime-row">
       <span class="lifetime-icon">⟳</span>
       <span class="lifetime-label">Lifetime</span>
-      <span class="lifetime-rate">{{ lifetimeAcceptanceDisplay }}</span>
+      <span class="lifetime-rate">{{ lifetimeHitRateDisplay }}</span>
       <span class="meta-sep">·</span>
       <span class="meta-stat">
-        <span class="meta-label">acc</span>
-        <span class="meta-val">{{ fmt(store.lifetime.specAccepted) }}</span>
+        <span class="meta-label">hits</span>
+        <span class="meta-val">{{ fmt(store.lifetime.cacheHits) }}</span>
       </span>
     </div>
   </div>
@@ -66,18 +52,17 @@
 import { computed } from 'vue'
 import { useMetricsStore } from '@/stores/metrics'
 import SparklineChart from './SparklineChart.vue'
-import GaugeRing from './GaugeRing.vue'
 
 const store = useMetricsStore()
 
-const acceptanceDisplay = computed(() => {
-  const r = store.mtpAcceptanceRate
+const hitRateDisplay = computed(() => {
+  const r = store.cacheHitRate
   if (r === null) return '—'
   return (r * 100).toFixed(1) + '%'
 })
 
-const lifetimeAcceptanceDisplay = computed(() => {
-  const r = store.lifetimeMtpAcceptanceRate
+const lifetimeHitRateDisplay = computed(() => {
+  const r = store.lifetimeCacheHitRate
   if (r === null) return '—'
   return (r * 100).toFixed(1) + '%'
 })
@@ -90,7 +75,7 @@ function fmt(n) {
 </script>
 
 <style scoped>
-.mtp-card {
+.hit-rate-card {
   padding: 12px 14px 10px;
   display: flex;
   flex-direction: column;
@@ -130,36 +115,29 @@ function fmt(n) {
 .type-pill {
   font-size: 0.65rem;
   font-weight: 700;
-  color: #ec4899;
-  background: rgba(236, 72, 153, 0.1);
-  border: 1px solid rgba(236, 72, 153, 0.25);
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
   border-radius: 10px;
   padding: 1px 6px;
 }
 
-.mtp-hero {
+.hit-rate-hero {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 2px 0;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
 }
 
-.mtp-left {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.mtp-rate-pct {
+.hit-rate-pct {
   font-size: 1.55rem;
   font-weight: 800;
   font-family: var(--font-mono, monospace);
-  color: #ec4899;
+  color: #f59e0b;
   line-height: 1;
 }
 
-.mtp-sub {
+.hit-rate-sub {
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -201,7 +179,7 @@ function fmt(n) {
 .lifetime-rate {
   font-size: 0.78rem;
   font-family: var(--font-mono, monospace);
-  color: #ec4899;
+  color: #f59e0b;
   font-weight: 700;
 }
 
@@ -225,8 +203,8 @@ function fmt(n) {
   font-weight: 600;
 }
 
-.accent-pink {
-  color: #ec4899;
+.accent-amber {
+  color: #f59e0b;
 }
 
 .meta-sep {
