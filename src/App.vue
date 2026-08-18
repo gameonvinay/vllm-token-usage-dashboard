@@ -2,12 +2,12 @@
   <div class="app-bg" />
   <div class="app-grid" />
 
-  <!-- Google 2FA OAuth Lock Screen -->
+  <!-- Google 2FA OAuth Lock Screen (Active on hosted domain, bypassed on Local LAN) -->
   <Transition name="fade">
-    <AuthLockScreen v-if="!store.authLoading && !store.authUser" />
+    <AuthLockScreen v-if="store.isAuthLocked" />
   </Transition>
 
-  <div class="app-shell" v-if="store.authUser || store.authLoading">
+  <div class="app-shell" v-if="!store.isAuthLocked">
     <!-- ── Header ─────────────────────────────────────────────────────────── -->
     <header class="app-header">
       <div class="app-title">
@@ -57,12 +57,13 @@
         </Transition>
 
         <!-- Owner Profile & Cloud Sync -->
-        <div class="user-chip" :title="`Owner: ${store.authUser?.displayName || 'Vinay Saini'} (${store.authUser?.email || 'Firestore Connected'})`">
+        <div class="user-chip" :title="store.isLocalLan ? 'Local LAN Direct Mode' : `Owner: ${store.authUser?.displayName || 'Vinay Saini'}`">
           <img v-if="store.authUser?.photoURL" :src="store.authUser.photoURL" class="user-photo" alt="Avatar" />
-          <span v-else class="user-avatar-badge">👤</span>
+          <span v-else class="user-avatar-badge">{{ store.isLocalLan ? '🏠' : '👤' }}</span>
           <span class="user-name-text">{{ store.authUser?.displayName || 'Vinay Saini' }}</span>
+          <span v-if="store.isLocalLan" class="lan-tag">LAN</span>
           <span class="cloud-dot" title="Cloud Firestore Connected" />
-          <button class="btn-lock" @click="store.logout()" title="Sign Out & Lock Dashboard">🔒</button>
+          <button v-if="!store.isLocalLan && store.authUser" class="btn-lock" @click="store.logout()" title="Sign Out & Lock Dashboard">🔒</button>
         </div>
 
         <!-- Status -->
@@ -207,6 +208,17 @@ function formatContext(tokens) {
   color: var(--color-text, #f8fafc);
   font-weight: 700;
   letter-spacing: 0.01em;
+}
+
+.lan-tag {
+  background: rgba(0, 212, 170, 0.15);
+  border: 1px solid rgba(0, 212, 170, 0.35);
+  color: #00d4aa;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
 }
 
 .btn-lock {

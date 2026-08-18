@@ -138,6 +138,31 @@ export const useMetricsStore = defineStore('metrics', () => {
   const authError       = ref(null)
   const authLoading     = ref(true)
 
+  function checkIsLocalNetwork() {
+    if (typeof window === 'undefined') return false
+    const host = window.location.hostname
+    return (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '::1' ||
+      host.endsWith('.local') ||
+      /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
+      /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host)
+    )
+  }
+
+  const isLocalLan = ref(checkIsLocalNetwork())
+
+  const isAuthLocked = computed(() => {
+    // If on Local LAN or localhost, always grant immediate access
+    if (isLocalLan.value) return false
+    // If still verifying Firebase session on hosted domain, keep locked
+    if (authLoading.value) return false
+    // On hosted public domain, require authenticated Google user
+    return !authUser.value
+  })
+
   // Initialize Firebase listeners if enabled
   if (isFirebaseConfigured()) {
     initFirebase(firebaseConfig.value)
@@ -844,7 +869,7 @@ export const useMetricsStore = defineStore('metrics', () => {
     gpuCacheUsagePeak, cpuCacheUsagePeak, cpuCacheOffloadGb, cpuCacheFilledGb, cpuCachePeakFilledGb,
     gpuKvCacheCapacityGb, gpuKvCacheTokensCapacity, gpuCacheFilledGb, gpuActiveTokens,
     // Firebase State
-    firebaseConfig, cloudSyncStatus, authUser, authError, authLoading,
+    firebaseConfig, cloudSyncStatus, authUser, authError, authLoading, isLocalLan, isAuthLocked,
     // Actions
     poll, fetchSystemMetrics, clearHistory, clearLifetime, updateSettings,
     exportData, importData, loginWithGoogle, logout, updateFirebase,
