@@ -287,7 +287,13 @@ export const useMetricsStore = defineStore('metrics', () => {
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
   function buildUrl(path) {
-    return `${serverUrl.value.replace(/\/$/, '')}${path}`
+    const url = (serverUrl.value || '').trim().replace(/\/$/, '')
+    // If pointing to default localhost:8000 or relative, route via the same-origin backend proxy
+    // to avoid browser Private Network Access permission prompts and work remotely
+    if (!url || url === 'http://localhost:8000' || url === 'http://127.0.0.1:8000' || url === '/api') {
+      return `/api${path}`
+    }
+    return `${url}${path}`
   }
 
   function pushHistory(key, value) {
