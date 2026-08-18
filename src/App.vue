@@ -84,77 +84,106 @@
       </div>
     </header>
 
-    <!-- ── Offline notice ─────────────────────────────────────────────────── -->
-    <Transition name="fade">
-      <div v-if="store.serverStatus === 'offline'" class="offline-notice glass-card">
-        <div class="offline-icon">🔌</div>
-        <div>
-          <strong>Server Offline</strong>
-          <p>Cannot reach <code class="server-url-code">{{ store.serverUrl }}</code></p>
-          <p class="hint">Dashboard will auto-connect when the server is available.</p>
+    <!-- ── Navigation Tabs ────────────────────────────────────────────────── -->
+    <nav class="nav-tabs-bar">
+      <button
+        class="nav-tab-btn"
+        :class="{ active: activeTab === 'metrics' }"
+        @click="activeTab = 'metrics'"
+        id="tab-metrics-btn"
+      >
+        <span class="tab-icon">⚡</span>
+        <span class="tab-title">Live Engine &amp; Telemetry</span>
+      </button>
+
+      <button
+        class="nav-tab-btn"
+        :class="{ active: activeTab === 'users' }"
+        @click="activeTab = 'users'"
+        id="tab-users-btn"
+      >
+        <span class="tab-icon">👥</span>
+        <span class="tab-title">Users &amp; API Keys</span>
+        <span class="tab-pill-badge">3</span>
+      </button>
+    </nav>
+
+    <!-- ── Tab 1: Live Engine Telemetry (Total across all users) ───────────── -->
+    <main v-if="activeTab === 'metrics'">
+      <!-- Offline notice -->
+      <Transition name="fade">
+        <div v-if="store.serverStatus === 'offline'" class="offline-notice glass-card">
+          <div class="offline-icon">🔌</div>
+          <div>
+            <strong>Server Offline</strong>
+            <p>Cannot reach <code class="server-url-code">{{ store.serverUrl }}</code></p>
+            <p class="hint">Dashboard will auto-connect when the server is available.</p>
+          </div>
+          <button class="btn-ghost" style="flex-shrink:0" @click="poller.startPolling()">Retry Now</button>
         </div>
-        <button class="btn-ghost" style="flex-shrink:0" @click="poller.startPolling()">Retry Now</button>
-      </div>
-    </Transition>
-
-    <!-- ── Token Overview ──────────────────────────────────────────────────── -->
-    <section class="section">
-      <div class="section-header">
-        <div class="section-dot" style="background: #7c6ff7" />
-        <span class="section-label">Token Usage</span>
-      </div>
-      <TokensOverview />
-    </section>
-
-    <div class="section-divider" />
-
-    <!-- ── Core Engine & Cache Telemetry Cards (Big KV Cache + Small Side Cards) ──── -->
-    <div class="diagnostic-grid" :class="{ 'has-mtp': store.isMtpEnabled }">
-      <!-- 1. KV Cache Allocation -->
-      <Transition name="fade">
-        <KvCacheCard v-if="store.backendType !== 'llamacpp'" />
       </Transition>
 
-      <!-- 2. Cache Performance -->
-      <Transition name="fade">
-        <CacheHitCard v-if="store.backendType !== 'llamacpp'" />
-      </Transition>
+      <!-- Token Overview -->
+      <section class="section">
+        <div class="section-header">
+          <div class="section-dot" style="background: #7c6ff7" />
+          <span class="section-label">Total Engine Token Usage (All Users)</span>
+        </div>
+        <TokensOverview />
+      </section>
 
-      <!-- 3. MTP Speculative (auto-hidden if not active) -->
-      <Transition name="fade">
-        <MtpPanel v-if="store.isMtpEnabled" />
-      </Transition>
+      <div class="section-divider" />
 
-      <!-- 4. Engine Health -->
-      <EnginePanel />
-    </div>
+      <!-- Core Engine & Cache Telemetry Cards -->
+      <div class="diagnostic-grid" :class="{ 'has-mtp': store.isMtpEnabled }">
+        <Transition name="fade">
+          <KvCacheCard v-if="store.backendType !== 'llamacpp'" />
+        </Transition>
 
-    <div class="section-divider" />
+        <Transition name="fade">
+          <CacheHitCard v-if="store.backendType !== 'llamacpp'" />
+        </Transition>
 
-    <!-- ── Host System Hardware Monitor ───────────────────────────────────── -->
-    <section class="section" id="system-hardware-section">
-      <SystemInfoSection />
-    </section>
+        <Transition name="fade">
+          <MtpPanel v-if="store.isMtpEnabled" />
+        </Transition>
 
-    <div class="section-divider" />
-
-    <!-- ── Time Analytics ─────────────────────────────────────────────────── -->
-    <section class="section" id="time-analytics-section">
-      <div class="section-header">
-        <div class="section-dot" style="background: #3b82f6" />
-        <span class="section-label">Usage Over Time</span>
-        <span class="section-badge">Historical</span>
+        <EnginePanel />
       </div>
-      <TimeAnalytics />
-    </section>
+
+      <div class="section-divider" />
+
+      <!-- Host System Hardware Monitor -->
+      <section class="section" id="system-hardware-section">
+        <SystemInfoSection />
+      </section>
+
+      <div class="section-divider" />
+
+      <!-- Time Analytics -->
+      <section class="section" id="time-analytics-section">
+        <div class="section-header">
+          <div class="section-dot" style="background: #3b82f6" />
+          <span class="section-label">Usage Over Time</span>
+          <span class="section-badge">Historical</span>
+        </div>
+        <TimeAnalytics />
+      </section>
+    </main>
+
+    <!-- ── Tab 2: Users & API Keys (Individual Quotas & Usage) ─────────────── -->
+    <main v-else-if="activeTab === 'users'">
+      <UsersKeysTab />
+    </main>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useMetricsStore } from '@/stores/metrics'
 import { useMetricsPoller } from '@/composables/useMetricsPoller'
 import AuthLockScreen    from '@/components/AuthLockScreen.vue'
+import UsersKeysTab     from '@/components/UsersKeysTab.vue'
 import ServerStatus      from '@/components/ServerStatus.vue'
 import TokensOverview    from '@/components/TokensOverview.vue'
 import KvCacheCard       from '@/components/KvCacheCard.vue'
@@ -166,6 +195,7 @@ import TimeAnalytics     from '@/components/TimeAnalytics.vue'
 
 const store  = useMetricsStore()
 const poller = useMetricsPoller()
+const activeTab = ref('metrics')
 
 const lastUpdatedStr = computed(() =>
   store.lastUpdated ? store.lastUpdated.toLocaleTimeString() : ''
@@ -195,6 +225,62 @@ function formatContext(tokens) {
 
 .user-avatar-badge {
   font-size: 0.85rem;
+}
+
+/* Navigation Tabs Bar */
+.nav-tabs-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 10px;
+}
+
+.nav-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--color-text-muted, #94a3b8);
+  font-family: var(--font-sans, sans-serif);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text, #f8fafc);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.nav-tab-btn.active {
+  background: rgba(124, 111, 247, 0.16);
+  border-color: rgba(124, 111, 247, 0.4);
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(124, 111, 247, 0.2);
+}
+
+.tab-icon {
+  font-size: 1rem;
+}
+
+.tab-title {
+  letter-spacing: 0.01em;
+}
+
+.tab-pill-badge {
+  background: rgba(0, 212, 170, 0.2);
+  color: #00d4aa;
+  border: 1px solid rgba(0, 212, 170, 0.35);
+  font-size: 0.64rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
 }
 
 .user-photo {
