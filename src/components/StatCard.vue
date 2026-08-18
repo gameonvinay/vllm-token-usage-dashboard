@@ -1,8 +1,9 @@
 <template>
   <div class="glass-card stat-card" :style="{ '--accent': color, '--glow': glow }">
     <div class="stat-card-header">
-      <div>
+      <div class="stat-label-wrap">
         <div class="stat-label">{{ label }}</div>
+        <span v-if="priceBadge" class="stat-price-badge">{{ priceBadge }}</span>
       </div>
       <div class="stat-icon" :style="{ background: `rgba(${rgbColor}, 0.15)`, color }">
         {{ icon }}
@@ -52,6 +53,8 @@ const props = defineProps({
   color:        { type: String,   default: '#7c6ff7' },
   glow:         { type: String,   default: 'rgba(124,111,247,0.2)' },
   icon:         { type: String,   default: '📊' },
+  isCurrency:   { type: Boolean,  default: false },
+  priceBadge:   { type: String,   default: '' },
 })
 
 const rgbColor = computed(() => {
@@ -63,6 +66,14 @@ const rgbColor = computed(() => {
 })
 
 function fmtNum(n) {
+  if (props.isCurrency) {
+    if (!n || n === 0) return '$0.00'
+    if (n < 0.01) return '$' + n.toFixed(4)
+    if (n < 100) return '$' + n.toFixed(2)
+    if (n >= 1e6) return '$' + (n / 1e6).toFixed(2) + 'M'
+    if (n >= 1e3) return '$' + (n / 1e3).toFixed(2) + 'K'
+    return '$' + n.toFixed(2)
+  }
   if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B'
   if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M'
   if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K'
@@ -96,6 +107,25 @@ const rateClass = computed(() => (props.rate !== null && props.rate > 0.5) ? 'po
 .stat-card:hover {
   border-color: rgba(255,255,255,0.13);
   box-shadow: 0 0 24px var(--glow, rgba(124,111,247,0.12));
+}
+
+.stat-label-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stat-price-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  background: rgba(0, 212, 170, 0.12);
+  color: #00d4aa;
+  border: 1px solid rgba(0, 212, 170, 0.28);
+  padding: 1px 6px;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
 }
 
 /* Session chip */

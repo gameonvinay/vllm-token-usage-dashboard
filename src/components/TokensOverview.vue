@@ -7,6 +7,7 @@
       :rate="store.rates.promptTokens"
       :subRate="store.lastPrefillSpeed"
       :sparkData="store.history.promptTokensRate"
+      priceBadge="$0.45 / 1M"
       color="#7c6ff7"
       glow="rgba(124,111,247,0.15)"
       icon="📥"
@@ -17,9 +18,22 @@
       :sessionValue="store.raw.genTokens"
       :rate="store.rates.genTokens"
       :sparkData="store.history.genTokensRate"
+      priceBadge="$3.20 / 1M"
       color="#00d4aa"
       glow="rgba(0,212,170,0.15)"
       icon="✨"
+    />
+    <StatCard
+      label="API Value / Saved"
+      :lifetime="store.lifetimeCost"
+      :sessionValue="store.sessionCost"
+      :rate="null"
+      :sparkData="null"
+      :isCurrency="true"
+      priceBadge="Venice API Equiv"
+      color="#10b981"
+      glow="rgba(16,185,129,0.18)"
+      icon="💰"
     />
     <StatCard
       label="Cached Tokens"
@@ -37,8 +51,8 @@
       :sessionValue="store.raw.requestsSuccess"
       :rate="null"
       :sparkData="null"
-      color="#10b981"
-      glow="rgba(16,185,129,0.15)"
+      color="#38bdf8"
+      glow="rgba(56,189,248,0.15)"
       icon="✅"
     />
   </div>
@@ -53,11 +67,17 @@ const store = useMetricsStore()
 <style scoped>
 .tokens-overview {
   display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  grid-template-columns: repeat(5, 1fr);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
+  .tokens-overview {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
   .tokens-overview {
     grid-template-columns: repeat(2, 1fr);
   }
