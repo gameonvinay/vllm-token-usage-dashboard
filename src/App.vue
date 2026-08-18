@@ -51,34 +51,11 @@
           </div>
         </Transition>
 
-        <!-- Cloud Sync Badge -->
-        <Transition name="fade">
-          <div
-            v-if="store.cloudSyncStatus === 'synced'"
-            class="meta-badge cloud-badge"
-            title="Cloud Firestore Realtime Sync Active (Click to configure)"
-            @click="showSettings = true"
-            style="cursor: pointer"
-          >
-            ☁️ Cloud
-          </div>
-        </Transition>
-
-        <!-- Google Auth chip (if enabled) -->
-        <div v-if="store.firebaseConfig.authEnabled" class="auth-chip">
-          <template v-if="store.authUser">
-            <img
-              v-if="store.authUser.photoURL"
-              :src="store.authUser.photoURL"
-              class="user-avatar"
-              :title="store.authUser.displayName || store.authUser.email"
-            />
-            <span class="user-name">{{ store.authUser.displayName?.split(' ')[0] || 'User' }}</span>
-            <button class="btn-logout" @click="store.logout()" title="Sign Out">✕</button>
-          </template>
-          <button v-else class="btn-signin" @click="handleGoogleLogin">
-            🔑 Sign In
-          </button>
+        <!-- Owner Profile & Cloud Sync -->
+        <div class="user-chip" title="Owner: Vinay Saini — Firestore Real-Time Sync Active">
+          <span class="user-avatar-badge">👤</span>
+          <span class="user-name-text">Vinay Saini</span>
+          <span class="cloud-dot" title="Cloud Firestore Connected" />
         </div>
 
         <!-- Status -->
@@ -96,25 +73,6 @@
           <div class="spinner" style="width:10px;height:10px;border-width:1.5px" v-if="store.serverStatus !== 'offline'" />
           {{ store.pollIntervalMs / 1000 }}s
         </div>
-
-        <!-- Quick export -->
-        <button
-          id="quick-export-btn"
-          class="btn-icon"
-          @click="store.exportData()"
-          aria-label="Export data"
-          title="Export metrics data"
-          data-tooltip="Export JSON"
-        >⬇️</button>
-
-        <!-- Settings -->
-        <button
-          id="open-settings-btn"
-          class="btn-icon"
-          @click="showSettings = true"
-          aria-label="Open settings"
-          title="Settings"
-        >⚙️</button>
       </div>
     </header>
 
@@ -181,20 +139,11 @@
       </div>
       <TimeAnalytics />
     </section>
-
-    <!-- ── Settings Modal ─────────────────────────────────────────────────── -->
-    <Transition name="fade">
-      <SettingsModal
-        v-if="showSettings"
-        @close="showSettings = false"
-        @saved="poller.restartPolling()"
-      />
-    </Transition>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { useMetricsStore } from '@/stores/metrics'
 import { useMetricsPoller } from '@/composables/useMetricsPoller'
 import ServerStatus      from '@/components/ServerStatus.vue'
@@ -205,11 +154,9 @@ import MtpPanel          from '@/components/MtpPanel.vue'
 import EnginePanel       from '@/components/EnginePanel.vue'
 import SystemInfoSection from '@/components/SystemInfoSection.vue'
 import TimeAnalytics     from '@/components/TimeAnalytics.vue'
-import SettingsModal     from '@/components/SettingsModal.vue'
 
 const store  = useMetricsStore()
 const poller = useMetricsPoller()
-const showSettings = ref(false)
 
 const lastUpdatedStr = computed(() =>
   store.lastUpdated ? store.lastUpdated.toLocaleTimeString() : ''
@@ -223,70 +170,42 @@ function formatContext(tokens) {
   }
   return `${tokens} ctx`
 }
-
-async function handleGoogleLogin() {
-  try {
-    await store.loginWithGoogle()
-  } catch (err) {
-    alert('Google Sign-In failed: ' + (err.message || err))
-  }
-}
 </script>
 
 <style scoped>
-.cloud-badge {
-  background: rgba(0, 212, 170, 0.12);
-  color: #00d4aa;
-  border-color: rgba(0, 212, 170, 0.3);
-}
-
-.auth-chip {
+.user-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 2px 8px;
+  gap: 7px;
+  background: rgba(124, 111, 247, 0.1);
+  border: 1px solid rgba(124, 111, 247, 0.28);
+  padding: 4px 11px;
   border-radius: 20px;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
 }
 
-.user-avatar {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
+.user-avatar-badge {
+  font-size: 0.85rem;
 }
 
-.user-name {
+.user-name-text {
   color: var(--color-text, #f8fafc);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
-.btn-logout {
-  background: none;
-  border: none;
-  color: var(--color-text-dim, #94a3b8);
-  font-size: 0.7rem;
-  cursor: pointer;
-  padding: 0 2px;
-}
-.btn-logout:hover {
-  color: #ef4444;
+.cloud-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #00d4aa;
+  box-shadow: 0 0 8px rgba(0, 212, 170, 0.9);
+  animation: pulse-cloud 2s infinite;
 }
 
-.btn-signin {
-  background: rgba(124, 111, 247, 0.15);
-  border: 1px solid rgba(124, 111, 247, 0.35);
-  color: #a59df9;
-  font-size: 0.72rem;
-  font-weight: 600;
-  border-radius: 12px;
-  padding: 3px 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.btn-signin:hover {
-  background: rgba(124, 111, 247, 0.25);
+@keyframes pulse-cloud {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
 }
 
 .offline-notice {

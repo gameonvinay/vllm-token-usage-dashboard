@@ -3,7 +3,7 @@ import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestor
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
 
 const FIREBASE_CONFIG_KEY = 'vllm-firebase-config'
-const DOC_ID = 'metrics-state'
+const DOC_ID = 'vinay_saini'
 const COLLECTION_NAME = 'vllm_telemetry'
 
 let app = null
