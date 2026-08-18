@@ -40,6 +40,7 @@
       :sessionValue="store.raw.cachedTokens"
       :rate="store.rates.cachedTokens"
       :sparkData="store.history.cachedTokensRate"
+      priceBadge="$0.045 / 1M"
       color="#f59e0b"
       glow="rgba(245,158,11,0.15)"
       icon="⚡"

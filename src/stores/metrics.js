@@ -131,20 +131,35 @@ export const useMetricsStore = defineStore('metrics', () => {
   // Backend type detection: 'vllm' | 'llamacpp'
   const backendType = ref('vllm')
 
-  // ── Pricing & API Cost Calculation (Venice Benchmark: $0.45/M prompt, $3.20/M output) ──
-  const PRICE_PROMPT_PER_M = 0.45   // $0.45 per 1M prompt tokens
-  const PRICE_GEN_PER_M    = 3.20   // $3.20 per 1M generated tokens
+  // ── Pricing & API Cost Calculation (Prompt: $0.45/M, Cached: $0.045/M [90% off], Output: $3.20/M) ──
+  const PRICE_PROMPT_PER_M = 0.45    // $0.45 per 1M uncached prompt tokens
+  const PRICE_CACHED_PER_M = 0.045   // $0.045 per 1M cached prompt tokens (90% discount)
+  const PRICE_GEN_PER_M    = 3.20    // $3.20 per 1M generated tokens
 
   const lifetimeCost = computed(() => {
-    const prompt = ((lifetime.value.promptTokens || 0) / 1_000_000) * PRICE_PROMPT_PER_M
-    const gen    = ((lifetime.value.genTokens || 0) / 1_000_000) * PRICE_GEN_PER_M
-    return prompt + gen
+    const totalPrompt = lifetime.value.promptTokens || 0
+    const cached      = lifetime.value.cachedTokens || 0
+    const uncached    = Math.max(0, totalPrompt - cached)
+    const gen         = lifetime.value.genTokens || 0
+
+    const uncachedCost = (uncached / 1_000_000) * PRICE_PROMPT_PER_M
+    const cachedCost   = (cached / 1_000_000) * PRICE_CACHED_PER_M
+    const genCost      = (gen / 1_000_000) * PRICE_GEN_PER_M
+
+    return uncachedCost + cachedCost + genCost
   })
 
   const sessionCost = computed(() => {
-    const prompt = ((raw.value.promptTokens || 0) / 1_000_000) * PRICE_PROMPT_PER_M
-    const gen    = ((raw.value.genTokens || 0) / 1_000_000) * PRICE_GEN_PER_M
-    return prompt + gen
+    const totalPrompt = raw.value.promptTokens || 0
+    const cached      = raw.value.cachedTokens || 0
+    const uncached    = Math.max(0, totalPrompt - cached)
+    const gen         = raw.value.genTokens || 0
+
+    const uncachedCost = (uncached / 1_000_000) * PRICE_PROMPT_PER_M
+    const cachedCost   = (cached / 1_000_000) * PRICE_CACHED_PER_M
+    const genCost      = (gen / 1_000_000) * PRICE_GEN_PER_M
+
+    return uncachedCost + cachedCost + genCost
   })
 
   // ── Firebase Cloud Sync & Authentication ──────────────────────────────────
@@ -924,7 +939,7 @@ export const useMetricsStore = defineStore('metrics', () => {
     gpuCacheUsagePeak, cpuCacheUsagePeak, cpuCacheOffloadGb, cpuCacheFilledGb, cpuCachePeakFilledGb,
     gpuKvCacheCapacityGb, gpuKvCacheTokensCapacity, gpuCacheFilledGb, gpuActiveTokens,
     // Pricing & Cost Values
-    lifetimeCost, sessionCost, PRICE_PROMPT_PER_M, PRICE_GEN_PER_M,
+    lifetimeCost, sessionCost, PRICE_PROMPT_PER_M, PRICE_CACHED_PER_M, PRICE_GEN_PER_M,
     // Firebase State
     firebaseConfig, cloudSyncStatus, authUser, authError, authLoading, isLocalLan, isAuthLocked,
     // Actions
