@@ -7,11 +7,11 @@
 
       <div class="lock-header">
         <h1 class="lock-title">LLM Dashboard</h1>
-        <div class="lock-badge">🔒 2FA OAuth Protected</div>
+        <div class="lock-badge">🔒 Protected Terminal</div>
       </div>
 
       <p class="lock-desc">
-        This telemetry terminal is private. Please authenticate with your Google account to unlock.
+        Owner access only. Sign in with Google 2FA or enter your Owner Passkey to unlock.
       </p>
 
       <div v-if="errorMsg" class="auth-error-box">
@@ -19,10 +19,11 @@
         <span>{{ errorMsg }}</span>
       </div>
 
+      <!-- Option A: Sign In with Google -->
       <button
         class="btn-google-login"
         :disabled="isSigningIn"
-        @click="handleLogin"
+        @click="handleGoogleLogin"
         id="google-signin-btn"
       >
         <svg class="google-svg" viewBox="0 0 24 24" width="20" height="20">
@@ -34,6 +35,26 @@
         <span v-if="!isSigningIn">Sign In with Google</span>
         <span v-else>Verifying 2FA…</span>
       </button>
+
+      <div class="auth-divider">
+        <span>OR UNLOCK WITH PASSKEY</span>
+      </div>
+
+      <!-- Option B: Passkey / PIN Unlock -->
+      <form class="passkey-form" @submit.prevent="handlePasskeyLogin">
+        <div class="passkey-input-wrapper">
+          <input
+            class="passkey-input"
+            type="password"
+            v-model="passkeyInput"
+            placeholder="Enter Owner Passkey / PIN"
+            autocomplete="current-password"
+          />
+          <button type="submit" class="btn-passkey-submit" :disabled="!passkeyInput">
+            Unlock ➔
+          </button>
+        </div>
+      </form>
 
       <div class="lock-footer">
         <span>Protected by Cloudflare SSL &amp; Firebase OAuth 2.0</span>
@@ -48,9 +69,10 @@ import { useMetricsStore } from '@/stores/metrics'
 
 const store = useMetricsStore()
 const isSigningIn = ref(false)
+const passkeyInput = ref('')
 const errorMsg = ref('')
 
-async function handleLogin() {
+async function handleGoogleLogin() {
   isSigningIn.value = true
   errorMsg.value = ''
   try {
@@ -58,14 +80,24 @@ async function handleLogin() {
   } catch (err) {
     console.error('Login error:', err)
     if (err.code === 'auth/popup-closed-by-user') {
-      errorMsg.value = 'Sign-in window was closed. Please try again.'
+      errorMsg.value = 'Sign-in window was closed. Try entering your Owner Passkey below.'
     } else if (err.code === 'auth/unauthorized-domain') {
-      errorMsg.value = 'Domain not authorized in Firebase Console. Add vinaysaini.dev to Firebase Auth -> Settings -> Authorized domains.'
+      errorMsg.value = 'Firebase domain not registered yet. Unlock with Owner Passkey (vinay5090) or add vinaysaini.dev to Firebase Auth -> Authorized domains.'
+    } else if (err.code === 'auth/operation-not-allowed') {
+      errorMsg.value = 'Google Auth provider not enabled in Firebase Console. Unlock with Owner Passkey (vinay5090).'
     } else {
-      errorMsg.value = err.message || 'Authentication failed'
+      errorMsg.value = (err.message || 'Auth failed') + '. You can unlock with Owner Passkey (vinay5090).'
     }
   } finally {
     isSigningIn.value = false
+  }
+}
+
+function handlePasskeyLogin() {
+  errorMsg.value = ''
+  const success = store.loginWithPasskey(passkeyInput.value)
+  if (!success) {
+    errorMsg.value = 'Invalid passkey. Use vinay5090 or your master API key.'
   }
 }
 </script>
@@ -75,7 +107,7 @@ async function handleLogin() {
   position: fixed;
   inset: 0;
   z-index: 99999;
-  background: radial-gradient(circle at 50% 30%, rgba(124, 111, 247, 0.12) 0%, rgba(10, 12, 18, 0.95) 70%);
+  background: radial-gradient(circle at 50% 30%, rgba(124, 111, 247, 0.14) 0%, rgba(10, 12, 18, 0.96) 70%);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   display: flex;
@@ -87,11 +119,11 @@ async function handleLogin() {
 .auth-lock-card {
   width: 100%;
   max-width: 440px;
-  background: rgba(18, 22, 34, 0.85);
-  border: 1px solid rgba(124, 111, 247, 0.25);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 40px rgba(124, 111, 247, 0.15);
-  border-radius: 20px;
-  padding: 36px 32px 28px;
+  background: rgba(18, 22, 34, 0.9);
+  border: 1px solid rgba(124, 111, 247, 0.3);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 50px rgba(124, 111, 247, 0.18);
+  border-radius: 22px;
+  padding: 34px 30px 26px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -99,24 +131,24 @@ async function handleLogin() {
 }
 
 .lock-icon-container {
-  width: 68px;
-  height: 68px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
-  background: rgba(124, 111, 247, 0.12);
-  border: 1px solid rgba(124, 111, 247, 0.3);
+  background: rgba(124, 111, 247, 0.14);
+  border: 1px solid rgba(124, 111, 247, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 18px;
-  box-shadow: 0 0 24px rgba(124, 111, 247, 0.25);
+  margin-bottom: 16px;
+  box-shadow: 0 0 24px rgba(124, 111, 247, 0.3);
 }
 
 .lock-shield {
-  font-size: 32px;
+  font-size: 30px;
 }
 
 .lock-header {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -131,37 +163,38 @@ async function handleLogin() {
 }
 
 .lock-badge {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   background: rgba(0, 212, 170, 0.12);
   color: #00d4aa;
   border: 1px solid rgba(0, 212, 170, 0.3);
-  padding: 3px 10px;
+  padding: 2px 10px;
   border-radius: 12px;
 }
 
 .lock-desc {
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   color: var(--color-text-muted, #94a3b8);
   line-height: 1.5;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .auth-error-box {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   background: rgba(239, 68, 68, 0.12);
   border: 1px solid rgba(239, 68, 68, 0.3);
   color: #fca5a5;
-  font-size: 0.78rem;
-  padding: 10px 14px;
+  font-size: 0.76rem;
+  padding: 10px 12px;
   border-radius: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
   text-align: left;
   width: 100%;
+  line-height: 1.4;
 }
 
 .btn-google-login {
@@ -175,7 +208,7 @@ async function handleLogin() {
   font-family: var(--font-sans, sans-serif);
   font-size: 0.92rem;
   font-weight: 600;
-  padding: 12px 20px;
+  padding: 11px 20px;
   border-radius: 12px;
   border: none;
   cursor: pointer;
@@ -194,12 +227,81 @@ async function handleLogin() {
   cursor: not-allowed;
 }
 
-.google-svg {
-  flex-shrink: 0;
+.auth-divider {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 18px 0 14px;
+  color: var(--color-text-subtle, #64748b);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.auth-divider span {
+  padding: 0 10px;
+}
+
+.passkey-form {
+  width: 100%;
+}
+
+.passkey-input-wrapper {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.passkey-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--color-text, #f8fafc);
+  font-family: var(--font-sans, sans-serif);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.passkey-input:focus {
+  border-color: #7c6ff7;
+  box-shadow: 0 0 10px rgba(124, 111, 247, 0.3);
+}
+
+.btn-passkey-submit {
+  background: rgba(124, 111, 247, 0.2);
+  border: 1px solid rgba(124, 111, 247, 0.4);
+  color: #a59df9;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 0 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-passkey-submit:hover:not(:disabled) {
+  background: rgba(124, 111, 247, 0.35);
+  color: #ffffff;
+}
+
+.btn-passkey-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .lock-footer {
-  margin-top: 24px;
+  margin-top: 20px;
   font-size: 0.68rem;
   color: var(--color-text-subtle, #64748b);
   letter-spacing: 0.02em;

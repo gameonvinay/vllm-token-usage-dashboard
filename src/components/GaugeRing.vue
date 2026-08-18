@@ -10,7 +10,6 @@
         :stroke-dasharray="`${arcLen} ${circumference}`"
         :stroke-dashoffset="`-${gapLen / 2}`"
         stroke-linecap="round"
-        transform="rotate(-90deg)"
         style="transform-origin: center; transform: rotate(90deg)"
       />
       <!-- Value arc -->

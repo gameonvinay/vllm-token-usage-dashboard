@@ -138,6 +138,36 @@ export const useMetricsStore = defineStore('metrics', () => {
   const authError       = ref(null)
   const authLoading     = ref(true)
 
+  // Restore existing session if previously authenticated
+  try {
+    const savedSession = localStorage.getItem('vllm_owner_session')
+    if (savedSession) {
+      authUser.value = JSON.parse(savedSession)
+    }
+  } catch {}
+
+  function loginWithPasskey(passkey) {
+    const validKeys = [
+      'vinay5090',
+      'vinaysaini',
+      '5090',
+      'sk-vinay-master-admin-5090-key',
+      'sk-proj-vinaysaini-d56fd6f12a1eef114be1ccc3c8be0557a4e0d2c1'
+    ]
+
+    if (validKeys.includes(passkey?.trim())) {
+      const userObj = {
+        displayName: 'Vinay Saini',
+        email: 'owner@vinaysaini.dev',
+        isPasskeyAuth: true
+      }
+      authUser.value = userObj
+      localStorage.setItem('vllm_owner_session', JSON.stringify(userObj))
+      return true
+    }
+    return false
+  }
+
   function checkIsLocalNetwork() {
     if (typeof window === 'undefined') return false
     const host = window.location.hostname
@@ -158,8 +188,8 @@ export const useMetricsStore = defineStore('metrics', () => {
     // If on Local LAN or localhost, always grant immediate access
     if (isLocalLan.value) return false
     // If still verifying Firebase session on hosted domain, keep locked
-    if (authLoading.value) return false
-    // On hosted public domain, require authenticated Google user
+    if (authLoading.value && !authUser.value) return false
+    // On hosted public domain, require authenticated user
     return !authUser.value
   })
 
@@ -172,7 +202,14 @@ export const useMetricsStore = defineStore('metrics', () => {
       }
     })
     onAuthChange((user) => {
-      authUser.value = user
+      if (user) {
+        authUser.value = user
+        localStorage.setItem('vllm_owner_session', JSON.stringify({
+          displayName: user.displayName || 'Vinay Saini',
+          email: user.email,
+          photoURL: user.photoURL
+        }))
+      }
       authLoading.value = false
     })
   } else {
@@ -719,9 +756,11 @@ export const useMetricsStore = defineStore('metrics', () => {
   async function logout() {
     try {
       await signOutUser()
-      authUser.value = null
     } catch (err) {
       authError.value = err.message
+    } finally {
+      authUser.value = null
+      localStorage.removeItem('vllm_owner_session')
     }
   }
 
@@ -872,6 +911,6 @@ export const useMetricsStore = defineStore('metrics', () => {
     firebaseConfig, cloudSyncStatus, authUser, authError, authLoading, isLocalLan, isAuthLocked,
     // Actions
     poll, fetchSystemMetrics, clearHistory, clearLifetime, updateSettings,
-    exportData, importData, loginWithGoogle, logout, updateFirebase,
+    exportData, importData, loginWithGoogle, loginWithPasskey, logout, updateFirebase,
   }
 })
