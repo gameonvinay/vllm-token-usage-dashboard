@@ -317,4 +317,29 @@ function fmt(n) {
   transition: width 0.5s ease;
   box-shadow: 0 0 8px rgba(0, 212, 170, 0.4);
 }
+
+@media (max-width: 520px) {
+  .kv-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .kv-pills-group {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .kv-gauges-grid {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .kv-gauge-divider {
+    width: 100%;
+    height: 1px;
+    margin: 2px 0;
+  }
+  .kv-gauge-column {
+    justify-content: space-around;
+  }
+}
 </style>

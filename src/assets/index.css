@@ -109,9 +109,9 @@ body {
    LAYOUT
    ===================================================== */
 .app-shell {
-  max-width: 1440px;
+  max-width: 1640px;
   margin: 0 auto;
-  padding: 0 16px 24px;
+  padding: 0 20px 28px;
 }
 
 .app-header {
@@ -635,17 +635,89 @@ body {
 .count-anim { animation: count-up 0.3s ease; }
 
 /* =====================================================
-   RESPONSIVE
+   RESPONSIVE & MOBILE BREAKPOINTS
    ===================================================== */
-@media (max-width: 640px) {
-  .app-shell { padding: 0 14px 40px; }
-  .cards-grid { grid-template-columns: 1fr 1fr; }
-  .stat-value { font-size: 1.4rem; }
-  .app-header { padding: 14px 0 18px; }
+@media (max-width: 1100px) {
+  .cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
-@media (max-width: 420px) {
-  .cards-grid { grid-template-columns: 1fr; }
+@media (max-width: 768px) {
+  .app-shell {
+    padding: 0 12px 32px;
+  }
+  .app-header {
+    padding: 10px 0 14px;
+    gap: 10px;
+  }
+  .app-title {
+    gap: 8px;
+  }
+  .app-logo {
+    width: 32px;
+    height: 32px;
+    font-size: 15px;
+  }
+  .app-title h1 {
+    font-size: 1.12rem;
+  }
+  .header-right {
+    gap: 6px;
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .meta-badge, .model-chip, .backend-badge {
+    font-size: 0.64rem;
+    padding: 2px 7px;
+  }
+  .cards-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .stat-card {
+    padding: 12px 14px;
+  }
+  .stat-value {
+    font-size: 1.35rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-shell {
+    padding: 0 8px 24px;
+  }
+  .cards-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .app-title h1 {
+    font-size: 1.05rem;
+  }
+  .app-title .subtitle {
+    display: none;
+  }
+  .header-right {
+    gap: 4px;
+  }
+  .auth-chip {
+    padding: 2px 6px;
+    font-size: 0.66rem;
+  }
+  .user-name {
+    max-width: 55px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .modal {
+    max-width: 95vw !important;
+    padding: 16px 12px !important;
+  }
+  .fb-config-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 /* =====================================================
