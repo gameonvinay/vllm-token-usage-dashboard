@@ -8,7 +8,7 @@
       <div class="app-title">
         <div class="app-logo">⚡</div>
         <div>
-          <h1>vLLM Dashboard</h1>
+          <h1>LLM Dashboard</h1>
           <div class="subtitle">Real-time metrics monitor</div>
         </div>
       </div>
