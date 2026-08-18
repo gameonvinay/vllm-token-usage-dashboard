@@ -142,7 +142,7 @@
         </div>
 
         <!-- Quick Integration Commands Snippet -->
-        <details class="integration-snippet" v-if="!user.isOwner">
+        <details class="integration-snippet">
           <summary class="snippet-summary">View Quick Setup Configs (Cursor, Claude Code, Python)</summary>
           <div class="snippet-content">
             <div class="snippet-block">
@@ -242,7 +242,7 @@ const usersList = ref([
     userId: 'vinay_saini',
     displayName: 'Vinay Saini',
     role: 'Owner (Admin)',
-    apiKey: 'sk-vinay-master-admin-5090-key',
+    apiKey: 'sk-proj-vinaysaini-d56fd6f12a1eef114be1ccc3c8be0557a4e0d2c1',
     isOwner: true,
     tpmLimit: 'Unlimited',
     rpmLimit: 'Unlimited',

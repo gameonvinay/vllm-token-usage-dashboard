@@ -69,7 +69,7 @@ export async function handleAdminUsersRequest(req, res) {
           userId: 'vinay_saini',
           displayName: 'Vinay Saini',
           role: 'Owner (Admin)',
-          apiKey: 'sk-vinay-master-admin-5090-key',
+          apiKey: 'sk-proj-vinaysaini-d56fd6f12a1eef114be1ccc3c8be0557a4e0d2c1',
           isOwner: true,
           tpmLimit: 'Unlimited',
           rpmLimit: 'Unlimited',
